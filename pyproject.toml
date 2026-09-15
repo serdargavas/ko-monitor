@@ -17,9 +17,10 @@ dependencies = [
   "py-vapid==1.9.4",
   "httpx>=0.28",
   "cryptography>=42",
-  "fastapi>=0.115",
-  "uvicorn>=0.32",
-  "websockets>=13",
+  "fastapi==0.141.1",
+  "starlette==1.6.0",
+  "uvicorn==0.53.0",
+  "websockets==17.1",
 ]
 
 [project.optional-dependencies]
@@ -31,3 +32,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["ocr: uses the real RapidOCR model (slower)"]
+# Only the two known third-party deprecation notices raised while importing the test client.
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning:fastapi\\.testclient",
+  "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning:starlette\\.testclient",
+]
