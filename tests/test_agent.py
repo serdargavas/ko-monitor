@@ -9,6 +9,7 @@ from ko_monitor.agent import Agent
 from ko_monitor.config import Config
 from ko_monitor.models import CaptureStatus, Readings
 from ko_monitor.monitor import Monitor
+from ko_monitor.status import StatusBoard
 from ko_monitor.storage import Storage
 
 FRAME = np.zeros((1, 1, 3), np.uint8)
@@ -256,3 +257,38 @@ def test_run_waits_only_for_the_rest_of_the_tick(tmp_path):
     stop = FakeStop(rounds=3)
     agent.run(stop)
     assert stop.waits == [1.5, 0.0, 0.75]
+
+
+def test_tick_publishes_status_to_the_board(tmp_path):
+    board = StatusBoard()
+    storage = Storage(tmp_path / "db.sqlite3")
+    running = {"value": True}
+    agent = Agent(
+        Config(data_dir=tmp_path), storage, FakeSource(), FakeDetector(), Monitor(Config().thresholds),
+        FakeNotifier(), FakeHeartbeat(), lambda: running["value"], now=lambda: 42.0, board=board,
+    )
+    agent.tick()
+    status = board.current()
+    assert (status.updated_at, status.state, status.process_running, status.capture) == (42.0, "alive", True, "ok")
+    assert status.readings["hp"] == 9000
+    assert status.zone_last == "Ronark Land"
+
+    running["value"] = False
+    agent.tick()
+    status = board.current()
+    assert (status.state, status.process_running, status.capture, status.readings) == ("closed", False, None, None)
+    storage.close()
+
+
+def test_capture_failure_is_published_as_not_found(tmp_path):
+    board = StatusBoard()
+    source = FlakySource()
+    source.fail = True
+    storage = Storage(tmp_path / "db.sqlite3")
+    agent = Agent(
+        Config(data_dir=tmp_path), storage, source, FakeDetector(), Monitor(Config().thresholds),
+        FakeNotifier(), FakeHeartbeat(), lambda: True, now=lambda: 7.0, board=board,
+    )
+    agent.tick()
+    assert (board.current().capture, board.current().readings) == ("not_found", None)
+    storage.close()

@@ -30,7 +30,12 @@ def test_default_config_is_in_the_project_root():
 
 
 @pytest.mark.parametrize(
-    "text", ["[general\nprocess_name = 1\n", "[thresholds]\nno_such_threshold = 1\n"]
+    "text",
+    [
+        "[general\nprocess_name = 1\n",
+        "[thresholds]\nno_such_threshold = 1\n",
+        '[api]\nstream_quality = "ultra"\n',
+    ],
 )
 def test_malformed_config_is_a_one_line_error(tmp_path: Path, capsys, text):
     path = tmp_path / "config.toml"

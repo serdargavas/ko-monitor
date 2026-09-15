@@ -13,6 +13,7 @@ TITLES = {
     EventKind.BLIND: "🙈 İzleme yapılamıyor",
     EventKind.GAME_STARTED: "▶️ Oyun açıldı",
     EventKind.RECOVERED: "✅ Düzeldi",
+    EventKind.TEST: "🔔 Test bildirimi",
 }
 
 

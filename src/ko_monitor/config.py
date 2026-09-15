@@ -4,6 +4,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+STREAM_QUALITIES = ("low", "medium", "high")
+
 
 @dataclass(frozen=True)
 class Thresholds:
@@ -34,6 +36,20 @@ class HeartbeatConfig:
 
 
 @dataclass(frozen=True)
+class ApiConfig:
+    port: int = 8765
+    stream_quality: str = "medium"  # used when a stream client does not ask for a quality
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.port, int) or not 1 <= self.port <= 65535:
+            raise ValueError(f"api.port must be an integer between 1 and 65535, got {self.port!r}")
+        if self.stream_quality not in STREAM_QUALITIES:
+            raise ValueError(
+                f"api.stream_quality must be one of {', '.join(STREAM_QUALITIES)}, got {self.stream_quality!r}"
+            )
+
+
+@dataclass(frozen=True)
 class Config:
     process_name: str = "Client.acme"
     window_title: str = "Knight Evolution"
@@ -43,6 +59,7 @@ class Config:
     thresholds: Thresholds = field(default_factory=Thresholds)
     push: PushConfig = field(default_factory=PushConfig)
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
+    api: ApiConfig = field(default_factory=ApiConfig)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -51,7 +68,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def load_config(path: Path | None, base_dir: Path = PROJECT_ROOT) -> Config:
     """Relative paths resolve against the config file's folder, or base_dir when there is no file.
 
-    Raises tomllib.TOMLDecodeError for invalid TOML and TypeError for unknown keys in a section.
+    Raises tomllib.TOMLDecodeError for invalid TOML, TypeError for unknown keys in a section
+    and ValueError for invalid [api] values.
     """
     if path is not None and path.exists():
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -75,4 +93,5 @@ def load_config(path: Path | None, base_dir: Path = PROJECT_ROOT) -> Config:
         thresholds=Thresholds(**raw.get("thresholds", {})),
         push=PushConfig(**raw.get("push", {})),
         heartbeat=HeartbeatConfig(**raw.get("heartbeat", {})),
+        api=ApiConfig(**raw.get("api", {})),
     )

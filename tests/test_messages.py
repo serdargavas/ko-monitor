@@ -25,3 +25,15 @@ def test_every_notifying_kind_has_a_title():
     for kind in (EventKind.DEAD, EventKind.INVENTORY_FULL, EventKind.DISCONNECTED,
                  EventKind.GAME_CLOSED, EventKind.FROZEN, EventKind.BLIND):
         assert not render(Event(kind, 0.0))["title"].startswith(kind.value)
+
+
+def test_render_test_notification():
+    ts = datetime(2026, 9, 15, 12, 0).timestamp()
+    message = render(Event(EventKind.TEST, ts, "Bildirimler çalışıyor", notify=True))
+    assert message == {
+        "title": "🔔 Test bildirimi",
+        "body": "Bildirimler çalışıyor · 12:00",
+        "url": "/#/events",
+        "kind": "test",
+        "ts": ts,
+    }

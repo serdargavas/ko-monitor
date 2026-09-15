@@ -28,3 +28,7 @@ max_age_s = 300.0
 [heartbeat]
 ping_url = ""   # e.g. https://hc-ping.com/<uuid>; empty disables heartbeat
 api_key = ""    # healthchecks.io project API key, needed to pause the check
+
+[api]
+port = 8765                 # the API/PWA listens on 127.0.0.1:<port>; publish it with `tailscale serve --bg <port>`
+stream_quality = "medium"   # live view default when the phone does not choose: low | medium | high

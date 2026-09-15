@@ -241,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         cfg = load_config(args.config, PROJECT_ROOT)
-    except (tomllib.TOMLDecodeError, TypeError) as exc:
+    except (tomllib.TOMLDecodeError, TypeError, ValueError) as exc:
         detail = " ".join(str(exc).split())
         print(f"Ayar dosyası hatalı: {args.config}: {detail}", file=sys.stderr)
         return 2

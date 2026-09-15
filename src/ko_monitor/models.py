@@ -29,6 +29,7 @@ class EventKind(StrEnum):
     BLIND = "blind"
     RECOVERED = "recovered"
     INVENTORY_FULL = "inventory_full"
+    TEST = "test"  # manual test notification from the PWA; never produced by the monitor
 
 
 @dataclass

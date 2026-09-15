@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from helpers import ROOT
-from ko_monitor.config import load_config
+from ko_monitor.config import ApiConfig, load_config
 
 
 def test_defaults_when_file_missing(tmp_path: Path):
@@ -55,3 +57,18 @@ def test_relative_paths_resolve_against_base_dir_when_file_missing(tmp_path: Pat
 
 def test_default_base_dir_is_the_project_root():
     assert load_config(None).calibration_path == ROOT / "calibration.json"
+
+
+def test_api_defaults_and_overrides(tmp_path: Path):
+    assert load_config(None).api == ApiConfig(port=8765, stream_quality="medium")
+    path = tmp_path / "config.toml"
+    path.write_text('[api]\nport = 9000\nstream_quality = "high"\n', encoding="utf-8")
+    assert load_config(path).api == ApiConfig(port=9000, stream_quality="high")
+
+
+@pytest.mark.parametrize("text", ['[api]\nstream_quality = "ultra"\n', "[api]\nport = 0\n", "[api]\nport = 70000\n"])
+def test_invalid_api_settings_raise_value_error(tmp_path: Path, text):
+    path = tmp_path / "config.toml"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_config(path)

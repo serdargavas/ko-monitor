@@ -15,6 +15,7 @@ from ko_monitor.heartbeat import Heartbeat
 from ko_monitor.models import CaptureStatus, Event, EventKind
 from ko_monitor.monitor import Monitor, Observation
 from ko_monitor.notifier import Notifier, PrintNotifier
+from ko_monitor.status import StatusBoard, status_from
 from ko_monitor.storage import Storage
 
 log = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class Agent:
         monotonic: Callable[[], float] = time.monotonic,
         incident_dir: Path | None = None,
         incident_limit: int = 50,
+        board: StatusBoard | None = None,
     ):
         self._cfg = cfg
         self._incident_dir = incident_dir if incident_dir is not None else cfg.data_dir / "incidents"
@@ -50,6 +52,7 @@ class Agent:
         self._process_running = process_running
         self._now = now
         self._monotonic = monotonic
+        self._board = board
         self._last_snapshot = float("-inf")
 
     def tick(self) -> float:
@@ -77,6 +80,10 @@ class Agent:
             self._handle(event)
             if event.kind in _INCIDENT_KINDS and frame is not None:
                 self._save_incident(event, frame)
+
+        if self._board is not None:
+            # Observation.capture is None while the game is closed.
+            self._board.publish(status_from(self.monitor, ts, running, observation.capture))
 
         t = self._cfg.thresholds
         if running and ts - self._last_snapshot >= t.snapshot_s:
