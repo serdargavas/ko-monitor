@@ -33,10 +33,17 @@ class Monitor:
         self.slots_total_last: int | None = None
         self.inventory_seen_at: float | None = None
         self._last_inventory_alert: float | None = None
+        # Startup grace: launcher/login/character select show no HUD, so bad states
+        # are not evaluated until the HUD is first seen or startup_grace_s passes.
+        self._started_at: float | None = None
+        self._in_grace = False
         self._reset_conditions()
 
     def _reset_conditions(self) -> None:
         self.last_readings: Readings | None = None
+        self._clear_timers()
+
+    def _clear_timers(self) -> None:
         self._blind_since: float | None = None
         self._hud_missing_since: float | None = None
         self._still_since: float | None = None
@@ -55,13 +62,27 @@ class Monitor:
         if self.state in (None, State.CLOSED):
             events.append(Event(EventKind.GAME_STARTED, obs.ts))
             self.state = State.ALIVE
+            self._started_at = obs.ts
+            self._in_grace = True
 
-        if obs.capture == CaptureStatus.OK and obs.readings is not None:
+        readable = obs.capture == CaptureStatus.OK and obs.readings is not None
+        if self._in_grace:
+            hud_seen = readable and obs.readings.hud_visible
+            if hud_seen or obs.ts - self._started_at >= self._t.startup_grace_s:
+                # Grace is over: normal rules start from clean conditions at this moment.
+                self._in_grace = False
+                self._clear_timers()
+
+        if readable:
             self._blind_since = None
             self._update(obs.ts, obs.readings)
             events.extend(self._inventory_events(obs.ts, obs.readings))
         elif self._blind_since is None:
             self._blind_since = obs.ts
+
+        if self._in_grace:
+            self._clear_timers()
+            return events
 
         target = self._target_state(obs.ts)
         if target != self.state:

@@ -96,7 +96,7 @@ Chat'teki gerçek "envanter dolu" ve ölüm/disconnect metinleri bu örneklerden
 ### Durum makinesi
 
 ```
-Kapalı ──süreç açıldı──> Canlı
+Kapalı ──süreç açıldı──> Canlı                   (HUD görülene kadar, en fazla 5 dk: kötü durum yok)
 Canlı ──> Ölü | Disconnect | Donmuş | Kör        (girişte bildirim)
 Ölü/Disconnect/Donmuş/Kör ──düzeldi──> Canlı    (olay kaydı, bildirim yok)
 (herhangi) ──süreç kayboldu──> Kapalı            (bildirim: "Oyun kapandı")
@@ -119,6 +119,7 @@ Aynı anda birden fazla koşul doğruysa **öncelik:** Kapalı > Kör > Disconne
 | Kör | capture `minimized`/`not_found`/`black` **veya** kare okunamıyor (çözünürlük uyuşmazlığı, detector hatası) | 60 sn kesintisiz (bu sürede mevcut durum korunur) | durum değişene kadar tek |
 
 - Ajan başladığında oyun zaten kapalıysa "Oyun kapandı" bildirimi gönderilmez.
+- Oyun açıldıktan sonra HUD ilk kez görülene kadar (en fazla 5 dk, `startup_grace_s`) Disconnect/Kör/Donmuş/Ölü bildirimi verilmez (giriş, sunucu ve karakter seçim ekranları). Bu sürede koşul sayaçları işlemez: HUD görülünce sayaçlar sıfırdan başlar; süre HUD görülmeden dolarsa kurallar o andan itibaren normal işler (ör. Disconnect (dolaylı) 15 sn sonra). Envanter dolu olayı bundan etkilenmez. Oyun her yeniden açıldığında bu süre yeniden başlar.
 - Kötü durumdan çıkış olumlu okuma ister: Ölü → Canlı ancak `hp > 0` okunduğunda, Disconnect → Canlı ancak HUD görüldüğünde. Belirsiz okuma (`None`) durumu değiştirmez; böylece tek bir hatalı okuma tekrar bildirime yol açmaz.
 - Oyun izlenirken kapanırsa heartbeat kontrolü duraklatılır (bilerek kapatmada dış alarm gelmez; çökme durumunda "Oyun kapandı" push'u zaten gider). Oyun tekrar açılınca ilk ping kontrolü otomatik olarak yeniden etkinleştirir.
 

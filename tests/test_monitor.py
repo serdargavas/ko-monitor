@@ -149,6 +149,52 @@ def test_inventory_full_from_slots_and_snapshot_keeps_last_seen(m):
     assert snap.inventory_seen_at == 2
 
 
+def test_fixture_monitor_is_out_of_startup_grace(m):
+    m.observe(ok(2, **NO_HUD, login_screen=True))
+    assert kinds(m.observe(ok(4, **NO_HUD, login_screen=True))) == [(EventKind.DISCONNECTED, True)]
+
+
+def test_login_and_character_screens_after_start_are_silent():
+    monitor = Monitor(T)
+    events = []
+    for ts in range(0, 32, 2):
+        events += monitor.observe(ok(ts, **NO_HUD, login_screen=True))
+    events += monitor.observe(ok(32))
+    events += monitor.observe(ok(34))
+    assert kinds(events) == [(EventKind.GAME_STARTED, False)]
+    assert monitor.state == State.ALIVE
+    # Grace ended by seeing the HUD: normal rules from clean conditions.
+    assert monitor.observe(ok(36, **NO_HUD, login_screen=True)) == []
+    assert kinds(monitor.observe(ok(38, **NO_HUD, login_screen=True))) == [(EventKind.DISCONNECTED, True)]
+
+
+def test_startup_grace_expires_after_300s_without_hud():
+    monitor = Monitor(T)
+    assert kinds(monitor.observe(ok(0, **NO_HUD))) == [(EventKind.GAME_STARTED, False)]
+    for ts in range(2, 316, 2):
+        assert monitor.observe(ok(ts, **NO_HUD)) == [], ts
+    assert monitor.state == State.ALIVE
+    assert kinds(monitor.observe(ok(315, **NO_HUD))) == [(EventKind.DISCONNECTED, True)]
+
+
+def test_black_loading_frames_after_start_are_not_blind():
+    monitor = Monitor(T)
+    assert kinds(monitor.observe(Observation(0, True, CaptureStatus.BLACK))) == [(EventKind.GAME_STARTED, False)]
+    for ts in range(2, 122, 2):
+        status = CaptureStatus.MINIMIZED if ts < 30 else CaptureStatus.BLACK
+        assert monitor.observe(Observation(ts, True, status)) == [], ts
+    assert monitor.observe(ok(122)) == []
+    assert monitor.state == State.ALIVE
+
+
+def test_startup_grace_restarts_on_every_launch(m):
+    assert kinds(m.observe(Observation(10, False))) == [(EventKind.GAME_CLOSED, True)]
+    events = []
+    for ts in range(20, 80, 2):
+        events += m.observe(ok(ts, **NO_HUD, login_screen=True))
+    assert kinds(events) == [(EventKind.GAME_STARTED, False)]
+
+
 def test_snapshot_when_closed():
     monitor = Monitor(T)
     monitor.observe(Observation(0, False))
