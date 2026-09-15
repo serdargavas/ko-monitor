@@ -152,6 +152,7 @@ def test_icon_script_draws_opaque_square_icons(tmp_path):
     spec = importlib.util.spec_from_file_location("make_icons", ROOT / "scripts" / "make_icons.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    assert module.ICON_DIR == ROOT / "frontend" / "public" / "icons"
     icon = module.render_icon(64)
     assert icon.shape == (64, 64, 3)
     assert tuple(int(v) for v in icon[0, 0]) == module.BACKGROUND

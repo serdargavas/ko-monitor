@@ -1,4 +1,4 @@
-"""Generates the PWA icons in web/icons with OpenCV, so the repo needs no external image assets.
+"""Generates the PWA icons in frontend/public/icons with OpenCV (npm run build copies them to web/icons).
 
 Run from the project root: .venv\\Scripts\\python.exe scripts\\make_icons.py
 """
@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-ICON_DIR = ROOT / "web" / "icons"
+ICON_DIR = ROOT / "frontend" / "public" / "icons"
 SIZES = (180, 192, 512)
 BACKGROUND = (21, 17, 15)  # BGR of #0f1115, the app background
 RING = (111, 191, 63)  # BGR of #3fbf6f, the "alive" green
