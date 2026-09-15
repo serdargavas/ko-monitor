@@ -78,15 +78,19 @@ async def _send_frames(websocket: WebSocket, source: FrameSource, preset: Stream
     loop = asyncio.get_running_loop()
     interval = 1.0 / preset.fps
     last_sent: np.ndarray | None = None
+    last_status: str | None = None  # status of the previous message; None after a frame
     while True:
         started = loop.time()
         status, frame = await run_in_threadpool(_grab, source)
         if frame is None:
-            last_sent = None
-            await websocket.send_json({"status": status.value})
+            last_sent = None  # the next real frame is always sent
+            if status.value != last_status:
+                last_status = status.value
+                await websocket.send_json({"status": status.value})
         elif frame is not last_sent:
             payload = await run_in_threadpool(encode_frame, frame, preset)
             last_sent = frame
+            last_status = None
             await websocket.send_bytes(payload)
         # else: the same array as last time (source hasn't produced a new one yet) — skip the
         # resize/encode/send work entirely, but still pace the loop normally below.

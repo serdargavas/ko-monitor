@@ -1,4 +1,5 @@
 import contextlib
+import json
 import sys
 import threading
 import time
@@ -57,6 +58,25 @@ class SequenceSource:
         frame = self._frames[min(self.calls, len(self._frames) - 1)]
         self.calls += 1
         return CaptureStatus.OK, frame
+
+    def set_stream_fps(self, fps):
+        pass
+
+    def close(self):
+        pass
+
+
+class ScriptedSource:
+    """Returns each (status, frame) pair in order, then repeats the last one."""
+
+    def __init__(self, results):
+        self._results = results
+        self.calls = 0
+
+    def latest(self):
+        result = self._results[min(self.calls, len(self._results) - 1)]
+        self.calls += 1
+        return result
 
     def set_stream_fps(self, fps):
         pass
@@ -268,6 +288,27 @@ def test_fastest_viewer_sets_the_capture_rate(make_client):
             assert wait_until(lambda: source.rates == [5.0, 20.0, 5.0])
             slow.receive_bytes()
     assert wait_until(lambda: source.rates == [5.0, 20.0, 5.0, None])
+
+
+def message_kind(message) -> str:
+    if message.get("bytes") is not None:
+        return "frame"
+    return json.loads(message["text"])["status"]
+
+
+def test_repeated_status_is_sent_once_until_it_changes(make_client):
+    minimized = (CaptureStatus.MINIMIZED, None)
+    not_found = (CaptureStatus.NOT_FOUND, None)
+    frame_b = np.full((1440, 2560, 3), 200, np.uint8)
+    source = ScriptedSource(
+        [minimized] * 3 + [(CaptureStatus.OK, FULL_FRAME)] + [minimized] * 3 + [not_found] * 3
+        + [(CaptureStatus.OK, frame_b)]
+    )
+    with make_client(source) as client:
+        with open_stream(client, "/api/stream?quality=high") as ws:
+            kinds = [message_kind(ws.receive()) for _ in range(5)]
+    # A frame in between counts as a change: the same status is sent again after it.
+    assert kinds == ["minimized", "frame", "minimized", "not_found", "frame"]
 
 
 def test_unchanged_frame_is_sent_only_once(make_client):
