@@ -262,3 +262,31 @@ def test_wgc_concurrent_latest_waits_for_a_session_start_in_progress(monkeypatch
     first.join()
     assert status == CaptureStatus.OK and got is frame
     assert starts == [1]
+
+
+def test_wgc_keeps_the_last_frame_across_a_rate_change_restart(monkeypatch):
+    """A rate-change restart must not blank the frame while the new session spins up."""
+    monkeypatch.setattr("ko_monitor.capture.find_window", lambda title: 1234)
+    monkeypatch.setattr("ko_monitor.capture.is_minimized", lambda hwnd: False)
+    cap = WgcCapture("Knight Evolution")
+    frame = np.full((4, 4, 3), 200, np.uint8)
+
+    def start_with_frame():
+        cap._control = FakeControl(finished=False)
+        with cap._lock:
+            cap._frame = frame
+
+    monkeypatch.setattr(cap, "_start", start_with_frame)
+    status, got = cap.latest()
+    assert status == CaptureStatus.OK and got is frame
+
+    def start_without_a_frame_yet():
+        # The new session hasn't delivered a frame yet; _frame must be left alone.
+        cap._control = FakeControl(finished=False)
+
+    monkeypatch.setattr(cap, "_start", start_without_a_frame_yet)
+    cap.set_stream_fps(10.0)
+
+    status, got = cap.latest()
+    assert status == CaptureStatus.OK
+    assert got is frame  # the previous frame is still served while the new session catches up

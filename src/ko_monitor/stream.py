@@ -43,16 +43,13 @@ def encode_frame(frame: np.ndarray, preset: StreamPreset) -> bytes:
     return buffer.tobytes()
 
 
-def _grab(source: FrameSource, preset: StreamPreset) -> tuple[CaptureStatus, bytes | None]:
-    """Runs in a worker thread: capture and encoding stay off the event loop."""
+def _grab(source: FrameSource) -> tuple[CaptureStatus, np.ndarray | None]:
+    """Runs in a worker thread: capture stays off the event loop."""
     try:
-        status, frame = source.latest()
+        return source.latest()
     except Exception:
         log.exception("stream capture failed")
         return CaptureStatus.NOT_FOUND, None
-    if frame is None:
-        return status, None
-    return status, encode_frame(frame, preset)
 
 
 class _StreamDemand:
@@ -79,13 +76,19 @@ class _StreamDemand:
 async def _send_frames(websocket: WebSocket, source: FrameSource, preset: StreamPreset) -> None:
     loop = asyncio.get_running_loop()
     interval = 1.0 / preset.fps
+    last_sent: np.ndarray | None = None
     while True:
         started = loop.time()
-        status, payload = await run_in_threadpool(_grab, source, preset)
-        if payload is not None:
-            await websocket.send_bytes(payload)
-        else:
+        status, frame = await run_in_threadpool(_grab, source)
+        if frame is None:
+            last_sent = None
             await websocket.send_json({"status": status.value})
+        elif frame is not last_sent:
+            payload = await run_in_threadpool(encode_frame, frame, preset)
+            last_sent = frame
+            await websocket.send_bytes(payload)
+        # else: the same array as last time (source hasn't produced a new one yet) — skip the
+        # resize/encode/send work entirely, but still pace the loop normally below.
         await asyncio.sleep(max(0.0, interval - (loop.time() - started)))
 
 
@@ -102,11 +105,14 @@ def stream_router(source: FrameSource, default_quality: str) -> APIRouter:
 
     @router.websocket("/api/stream")
     async def stream(websocket: WebSocket, quality: str | None = None):
+        # Accept first: closing before accept makes uvicorn reject the handshake with HTTP
+        # 403, and browsers then see a bare 1006 (indistinguishable from a dropped network
+        # connection) instead of the real 1008 reason.
+        await websocket.accept()
         preset = STREAM_PRESETS.get(quality or default_quality)
         if preset is None:
-            await websocket.close(code=1008)
+            await websocket.close(code=1008, reason="unknown stream quality")
             return
-        await websocket.accept()
         demand.add(preset.fps)
         log.info("live viewer connected (%s)", quality or default_quality)
         sender = asyncio.create_task(_send_frames(websocket, source, preset))
@@ -118,11 +124,14 @@ def stream_router(source: FrameSource, default_quality: str) -> APIRouter:
                 with contextlib.suppress(Exception):
                     await websocket.close(code=1011)
         finally:
+            # Synchronous and first: even if this task is cancelled again while awaiting the
+            # gather below (e.g. a second cancellation during server shutdown), the capture
+            # rate has already been returned to idle and is never left stuck at a viewer's rate.
+            demand.remove(preset.fps)
             for task in (sender, receiver):
                 task.cancel()
             # Waits for an in-flight capture to finish, so nothing is captured after this handler ends.
             await asyncio.gather(sender, receiver, return_exceptions=True)
-            demand.remove(preset.fps)
             log.info("live viewer disconnected")
 
     return router
