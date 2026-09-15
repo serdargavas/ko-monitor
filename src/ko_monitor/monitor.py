@@ -183,7 +183,13 @@ class Monitor:
 
     def _dialog_closed(self) -> bool:
         r = self.last_readings
-        return r is not None and r.dialog_text is None and r.hud_visible
+        if r is None or not r.hud_visible:
+            return False
+        if r.dialog_text is None:
+            return True
+        # The death dialog uses the same window: a confirmed revive dialog means the disconnect
+        # (or unknown) dialog is gone. A single revive misread must not release the hold.
+        return bool(r.revive_dialog) and self._dead_reads >= self._t.confirm_reads
 
     def _target_state(self, ts: float) -> tuple[State, bool]:
         """Returns (target state, whether a DISCONNECTED target is caused by the center dialog)."""

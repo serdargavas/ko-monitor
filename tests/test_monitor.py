@@ -401,6 +401,39 @@ def test_death_dialog_confirm_recovers_without_disconnect(m):
     assert m.state == State.ALIVE
 
 
+REVIVE = "Press OK to teleport back to the re-spawn point."
+
+
+def test_death_after_unknown_dialog_disconnect_is_reported(m):
+    m.observe(ok(2, dialog_text=NOTICE))
+    assert kinds(m.observe(ok(32, dialog_text=NOTICE))) == [(EventKind.DISCONNECTED, True)]
+    # The death dialog replaces the unknown dialog in the same window.
+    assert m.observe(ok(34, hp=0, dialog_text=REVIVE, revive_dialog=True)) == []
+    assert m.state == State.DISCONNECTED
+    events = m.observe(ok(36, hp=0, dialog_text=REVIVE, revive_dialog=True))
+    assert kinds(events) == [(EventKind.DEAD, True)]
+    assert events[0].detail == "Ronark Land"
+    assert kinds(m.observe(ok(60, hp=9996))) == [(EventKind.RECOVERED, False)]
+
+
+def test_death_after_disconnect_phrase_dialog_is_reported(m):
+    text = "Disconnected from server"
+    m.observe(ok(2, dialog_text=text, disconnect_dialog=True))
+    assert kinds(m.observe(ok(4, dialog_text=text, disconnect_dialog=True))) == [(EventKind.DISCONNECTED, True)]
+    assert m.observe(ok(6, hp=0, dialog_text=REVIVE, revive_dialog=True)) == []
+    assert kinds(m.observe(ok(8, hp=0, dialog_text=REVIVE, revive_dialog=True))) == [(EventKind.DEAD, True)]
+
+
+def test_single_revive_misread_does_not_release_dialog_disconnect(m):
+    text = "Disconnected from server"
+    m.observe(ok(2, dialog_text=text, disconnect_dialog=True))
+    assert kinds(m.observe(ok(4, dialog_text=text, disconnect_dialog=True))) == [(EventKind.DISCONNECTED, True)]
+    assert m.observe(ok(6, dialog_text=REVIVE, revive_dialog=True)) == []
+    for ts in range(8, 80, 2):
+        assert m.observe(ok(ts, dialog_text=text, disconnect_dialog=True)) == [], ts
+    assert m.state == State.DISCONNECTED
+
+
 def test_blind_gap_keeps_unknown_dialog_timer_only_for_dialog_disconnect(m):
     hidden_hud_dialog = dict(hud_visible=False, hp=9000, zone=None, dialog_text=NOTICE)
     m.observe(ok(2, **NO_HUD))
