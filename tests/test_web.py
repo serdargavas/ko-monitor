@@ -147,3 +147,7 @@ def test_status_and_events_screens_are_registered_first_status():
     screens = registered_screens()
     assert screens[0] == "status"
     assert {"status", "events", "settings"} <= set(screens)
+
+
+def test_every_tab_has_a_screen_in_tab_order():
+    assert registered_screens() == tab_routes() == ["status", "live", "events", "settings"]

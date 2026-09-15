@@ -1,4 +1,4 @@
-const CACHE = "ko-monitor-v2";
+const CACHE = "ko-monitor-v3";
 // Every file under web/js must be listed (tests/test_web.py checks it). Bump CACHE when this list changes.
 const SHELL = [
   "/",
@@ -12,6 +12,7 @@ const SHELL = [
   "/js/api.js",
   "/js/ui.js",
   "/js/screens/events.js",
+  "/js/screens/live.js",
   "/js/screens/settings.js",
   "/js/screens/status.js",
 ];
