@@ -31,7 +31,9 @@ def read_dialog(
     Death and disconnect notices share the same dialog window, so the frame template only
     says "a dialog is open"; the text read from it decides which one it is. The dialog is
     translucent, so nameplates behind it can leak into the text: disconnect phrases (short,
-    generic words) must match whole words; the long revive phrase matches as a substring.
+    generic words) must match whole words and only in the first text line (lower lines often
+    carry a nameplate); the long revive phrase and ignore phrases match the joined text as a
+    substring.
     """
     if spec is None:
         return None, None, None
@@ -41,15 +43,17 @@ def read_dialog(
     if not present:
         return None, False, False
 
-    parts = []
+    lines = []
     for roi in spec.text_rois:
         line = ocr.read_line(crop(frame, roi))
-        if line is not None and line[0].strip():
-            parts.append(line[0].strip())
-    text = " ".join(parts)
+        lines.append(line[0].strip() if line is not None else "")
+    text = " ".join(part for part in lines if part)
     folded = fold(text)
+    first_line = fold(lines[0]) if lines else ""
     if any(fold(phrase) in folded for phrase in spec.ignore_phrases):
         return None, False, False
     revive = any(fold(phrase) in folded for phrase in spec.revive_phrases)
-    disconnect = not revive and any(_has_word_phrase(folded, phrase) for phrase in spec.disconnect_phrases)
+    disconnect = not revive and any(
+        _has_word_phrase(first_line, phrase) for phrase in spec.disconnect_phrases
+    )
     return text, revive, disconnect

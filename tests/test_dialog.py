@@ -118,6 +118,19 @@ def test_turkish_letters_are_folded_before_matching(tmp_path: Path):
     assert read_dialog(frame, spec, FakeOcr(["PARTİ DAVETİ", None])) == (None, False, False)
 
 
+def test_disconnect_phrase_only_in_line_two_is_unknown(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    # Line 2 often carries a nameplate leaking through the translucent dialog.
+    ocr = FakeOcr(["Unexpected notice", "Server Guard"])
+    assert read_dialog(frame, spec, ocr) == ("Unexpected notice Server Guard", False, False)
+
+
+def test_disconnect_phrase_in_line_one_is_disconnect(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    ocr = FakeOcr(["Lost the server", "Guard"])
+    assert read_dialog(frame, spec, ocr) == ("Lost the server Guard", False, True)
+
+
 def test_revive_phrase_still_matches_as_substring_after_folding(tmp_path: Path):
     frame, spec = build(tmp_path)
     ocr = FakeOcr(["Press OK to TELEPORT BACK TO THE RE-SPAWN p", "oint."])
