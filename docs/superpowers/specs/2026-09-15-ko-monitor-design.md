@@ -1,0 +1,211 @@
+# KO Monitor — Tasarım
+
+**Tarih:** 2026-09-15
+**Durum:** Taslak (kullanıcı onayı bekliyor)
+
+## 1. Amaç
+
+Knight Online private sunucusunda ("Knight Evolution" client'ı, HomekoWorld) oynarken:
+
+- Karakter öldüğünde, envanter dolduğunda, sunucudan düşüldüğünde veya izleme bozulduğunda **iPhone'a birkaç saniye içinde bildirim** gelsin.
+- Oyun açıkken **dakikada bir durum kaydı** (health check) tutulsun, telefondan görülebilsin.
+- Telefondan **tek dokunuşla canlı oyun ekranı** izlenebilsin (evde ve dışarıda).
+
+Kullanım senaryoları: Knight Genie açıkken bilgisayar başında değilken (AFK) ve bilgisayar başında başka işle uğraşırken.
+
+## 2. Kısıtlar ve temel kararlar
+
+| Karar | Gerekçe |
+|---|---|
+| **Sadece ekran okuma (read-only).** Bellek okuma, paket dinleme, oyuna tuş/tıklama gönderme yok. | Client ACME anti-cheat ile korunuyor; bunlar ban riski ve sunucu kuralı ihlali. |
+| **Ekran yakalama: Windows Graphics Capture** (`windows-capture` paketi). | Spike'ta hem görünürken hem başka pencerenin arkasındayken doğru kare verdi. |
+| **Ajan: Python 3.12.** | Görüntü işleme (OpenCV, OCR) ekosistemi en güçlü. |
+| **Telefon: iPhone + PWA (React).** | Expo ile bildirim için yıllık Apple geliştirici hesabı gerekir; PWA ücretsiz. |
+| **Erişim: Tailscale + `tailscale serve`.** | Port açmadan dışarıdan erişim; PWA ve Web Push için gereken geçerli HTTPS sertifikası. |
+| **Dış canlılık kontrolü: healthchecks.io → ntfy.** | PC/internet/ajan çökerse ajan kendi bildirimini atamaz. |
+
+### Spike bulguları (2026-09-15)
+
+- Client: `C:\HomekoWorld\Binaries\Client.acme`, pencere başlığı `Knight Evolution`, borderless 2560x1440, ana monitörde. Oyun log dosyası yazmıyor.
+- `PrintWindow`: siyah kare → kullanılamaz.
+- Masaüstünden kopyalama: sadece oyun öndeyken çalışır.
+- **Windows Graphics Capture: oyun önde ve kısmen/tamamen örtülü iken çalışır.** Küçültülmüş (minimize) pencerede kare üretilmez.
+- HUD: HP/MP sol üstte sayı olarak (`9718/9996`). Bilgi chat'i sağ altta (`Picked up N Coins.` vb.). Para ve envanter sadece envanter penceresi açıkken görünür.
+
+## 3. Mimari
+
+```
+┌─────────────── PC: Python ajanı (tek süreç) ───────────────┐
+│ process_watch → capture → detectors → monitor               │
+│                                     ├→ storage (SQLite)     │
+│                                     ├→ notifier (Web Push)  │
+│                                     └→ heartbeat (hc.io)    │
+│ api (FastAPI): durum, geçmiş, olaylar, canlı yayın, PWA     │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ tailscale serve (HTTPS)
+                iPhone PWA: Durum · Canlı · Olaylar · Ayarlar
+```
+
+### Bileşenler
+
+| Bileşen | Görev | Bağımlılık |
+|---|---|---|
+| `process_watch` | `Client.acme` süreci var mı; açıldı/kapandı olayları. | psutil |
+| `capture` | Oyun penceresinin son karesini verir; pencere durumu: `ok`, `minimized`, `not_found`, `black`. Kopunca yeniden bağlanır (artan bekleme). | windows-capture |
+| `detectors` | Saf fonksiyonlar: kare → `Readings`. Ekrana dair tüm bilgi yalnızca burada. | OpenCV, RapidOCR, `calibration.json` |
+| `monitor` | `Readings` akışı + saat → durum makinesi, olaylar, dakikalık snapshot. | detectors, storage, notifier, heartbeat |
+| `notifier` | Arayüz: `send(event)`. v1 uygulaması: Web Push. Sonradan Pushover eklenebilir. | pywebpush |
+| `heartbeat` | Oyun izlenirken dakikada bir healthchecks.io ping; oyun normal kapanınca kontrolü duraklatır. | httpx |
+| `storage` | SQLite: `snapshots`, `events`, `push_subscriptions`. | sqlite3 |
+| `api` | FastAPI; yalnızca `127.0.0.1` üzerinde dinler; PWA'nın build dosyalarını da sunar. | FastAPI, uvicorn |
+| `pwa` | React + Vite + TypeScript + `vite-plugin-pwa`. | — |
+
+`Readings` alanları (her biri okunamazsa `None` = bilinmiyor):
+`hud_visible`, `hp`, `hp_max`, `revive_dialog`, `login_screen`, `disconnect_dialog`, `chat_events` (liste: `inventory_full`, …), `inventory_open`, `money`, `slots_used`, `slots_total`, `frame_diff`.
+
+## 4. Tespit
+
+- **Bölgeler (ROI):** 2560x1440 ve UI ölçeği 1.0 için `calibration.json` içinde tanımlı.
+- **Rakamlar (HP, para):** oyunun bitmap fontundan kesilmiş `0-9` ve `/` şablonlarıyla şablon eşleştirme.
+- **Pencereler/ekranlar (diriltme penceresi, envanter başlığı, giriş/sunucu seçim ekranı, bağlantı koptu penceresi, boş slot):** şablon eşleştirme, eşik değeri kalibrasyonda.
+- **Chat mesajları:** RapidOCR, yalnızca chat bölgesi değiştiğinde çalışır; anahtar ifadeler `calibration.json`'da.
+- **Belirsiz okuma** (eşik altı eşleşme, düşük OCR güveni) → `None`; asla ölüm/disconnect sayılmaz.
+
+### Kalibrasyon
+
+`python -m ko_monitor snap <etiket>` komutu o anki kareyi `samples/<etiket>/<zaman>.png` olarak kaydeder. Gerekli örnekler:
+
+1. `death` — ölüm ekranı
+2. `inventory_full` — dolu mesajının chat'te göründüğü an
+3. `inventory_open` — envanter penceresi açık, para görünür
+4. `disconnect` — bağlantı koptu penceresi ve/veya giriş ekranı
+5. `normal` — sıradan oyun (negatif örnek)
+
+Chat'teki gerçek "envanter dolu" ve ölüm/disconnect metinleri bu örneklerden alınıp `calibration.json`'a yazılır. Aynı örnekler detector testlerinin verisidir.
+
+## 5. İzleme döngüsü ve bildirimler
+
+### Zamanlama
+
+| Döngü | Aralık | Ne yapar |
+|---|---|---|
+| Süreç kontrolü (oyun kapalıyken) | 10 sn | `Client.acme` açıldı mı |
+| Hızlı kontrol (oyun açıkken) | 2 sn | kare → okumalar → kurallar |
+| Health check (oyun açıkken) | 60 sn | `snapshots` kaydı + healthchecks.io ping |
+
+### Durum makinesi
+
+```
+Kapalı ──süreç açıldı──> Canlı
+Canlı ──> Ölü | Disconnect | Donmuş | Kör        (girişte bildirim)
+Ölü/Disconnect/Donmuş/Kör ──düzeldi──> Canlı    (olay kaydı, bildirim yok)
+(herhangi) ──süreç kayboldu──> Kapalı            (bildirim: "Oyun kapandı")
+```
+
+Envanter dolu, durum makinesinden bağımsız bir olaydır.
+
+Aynı anda birden fazla koşul doğruysa **öncelik:** Kapalı > Kör > Disconnect > Ölü > Donmuş > Canlı. Yalnızca en yüksek öncelikli durum geçerlidir; örneğin ölüm ekranı sabit kaldığı için ayrıca "Donmuş" bildirimi gönderilmez (Donmuş yalnızca Canlı durumdayken değerlendirilir).
+
+### Kurallar (varsayılanlar, `config.toml` ile değiştirilebilir)
+
+| Olay | Koşul | Onay süresi | Tekrar |
+|---|---|---|---|
+| Ölüm | `hp == 0` **veya** `revive_dialog` | art arda 2 okuma (~4 sn) | durum değişene kadar tek |
+| Envanter dolu | `inventory_full` chat olayı **veya** (`inventory_open` ve `slots_used == slots_total`) | anında (~2 sn) | en fazla 10 dk'da bir |
+| Disconnect (kesin) | `login_screen` **veya** `disconnect_dialog` | art arda 2 okuma (~4 sn) | durum değişene kadar tek |
+| Disconnect (dolaylı) | süreç açık ve `hud_visible == False` | 15 sn kesintisiz | durum değişene kadar tek |
+| Oyun kapandı | izlenirken süreç kayboldu | anında | tek |
+| Donmuş | `frame_diff` ≈ 0 | 120 sn kesintisiz | durum değişene kadar tek |
+| Kör | capture `minimized`/`not_found`/`black` **veya** tüm okumalar `None` | 60 sn kesintisiz | durum değişene kadar tek |
+
+- Ajan başladığında oyun zaten kapalıysa "Oyun kapandı" bildirimi gönderilmez.
+- Oyun izlenirken kapanırsa heartbeat kontrolü duraklatılır (bilerek kapatmada dış alarm gelmez; çökme durumunda "Oyun kapandı" push'u zaten gider). Oyun tekrar açılınca ilk ping kontrolü otomatik olarak yeniden etkinleştirir.
+
+### Bildirim içeriği
+
+Başlık + kısa gövde, örn. **"💀 Karakter öldü"** / "Ronark Land · 11:42". Dokununca PWA "Olaylar" ekranında açılır.
+
+### Web Push
+
+İlk çalıştırmada VAPID anahtarları üretilir ve saklanır. PWA'dan izin verilince abonelik `push_subscriptions` tablosuna yazılır. Gönderim Apple push servisi üzerinden olur; telefonun Tailscale'e bağlı olması gerekmez.
+
+## 6. Kayıt (SQLite)
+
+- `snapshots(ts, state, hp, hp_max, money_last, slots_used_last, slots_total_last, inventory_seen_at)` — 30 gün saklanır.
+- `events(id, ts, kind, detail, notified, notified_at)`
+- `push_subscriptions(id, endpoint, keys_json, created_at)`
+
+## 7. Telefon uygulaması (PWA)
+
+| Ekran | İçerik |
+|---|---|
+| **Durum** | Durum rozeti, HP barı, "son güncelleme X sn önce", son görülen para ve slotlar (+ ne zaman görüldüğü), son 5 olay. Açıkken 5 sn'de bir `/api/status` sorgular. |
+| **Canlı** | Tek dokunuşla canlı görüntü; yatayda tam ekran; kalite: Düşük / Orta / Yüksek. |
+| **Olaylar** | Olay listesi + son 24 saat durum zaman çizelgesi. |
+| **Ayarlar** | Bildirim izni, test bildirimi. |
+
+### Canlı yayın
+
+- WebSocket üzerinden JPEG kareler, yalnızca Canlı ekranı açıkken; bağlantı kapanınca veya sayfa arka plana geçince yayın durur.
+- Kalite ön ayarları: Düşük 960x540 ~5 fps · **Orta (varsayılan) 1280x720 ~10 fps** · Yüksek 1920x1080 ~20 fps.
+- Bağlantı koparsa istemci otomatik yeniden bağlanır.
+
+### API
+
+| Uç | Açıklama |
+|---|---|
+| `GET /api/status` | anlık durum + son okumalar |
+| `GET /api/snapshots?since=` | health check geçmişi |
+| `GET /api/events?limit=` | olaylar |
+| `WS /api/stream?quality=` | canlı JPEG kareler |
+| `GET /api/push/vapid-key` | VAPID public key |
+| `POST /api/push/subscribe` | abonelik kaydı |
+| `POST /api/push/test` | test bildirimi |
+
+### Erişim ve güvenlik
+
+- Sunucu yalnızca `127.0.0.1`'de dinler; LAN'a açık değildir.
+- `tailscale serve` ile `https://<pc>.<tailnet>.ts.net` üzerinden sadece kullanıcının Tailscale cihazlarına açılır; ek şifre yok.
+- Kurulum: iPhone Safari → adres → Paylaş → Ana Ekrana Ekle → uygulamadan bildirim izni.
+
+## 8. Hata yönetimi
+
+- **Belirsiz okuma** → `None`, alarm yok; 60 sn boyunca hiçbir şey okunamazsa "Kör".
+- **Capture kopması** → artan beklemeyle yeniden bağlanma (1, 2, 4 … en fazla 30 sn).
+- **Push hatası** → 3 deneme (artan bekleme); 404/410 yanıtında abonelik silinir; 5 dk'dan eski bildirim gönderilmez; olay her durumda `events`'e yazılır.
+- **Ajan çökmesi** → Windows Görev Zamanlayıcı yeniden başlatır; PC/internet kesintisi → healthchecks.io → ntfy.
+- **Günlük** → dönen log dosyası (`logs/agent.log`, 5 MB × 5).
+
+## 9. Test
+
+- **detectors:** pytest, `samples/` altındaki etiketli görüntülerle beklenen `Readings`.
+- **monitor:** sahte okuma dizileri + sahte saat; onay süreleri, tekrar engelleme, durum geçişleri.
+- **Tekrar oynatma modu:** `--replay <klasör>` ile canlı capture yerine kayıtlı kareler; oyun kapalıyken uçtan uca deneme.
+- **api:** FastAPI TestClient.
+- **notifier:** sahte notifier ile unit test; gerçek iPhone'da bir kez elle push testi.
+- **PWA:** iPhone'da elle kurulum, bildirim ve canlı ekran kontrolü.
+
+## 10. Kurulum ve ayarlar
+
+- Proje: `C:\Users\Serdar\Desktop\ko-monitor`; Python 3.12 sanal ortamı; bağımlılıklar `pyproject.toml`'da.
+- Otomatik başlatma: Görev Zamanlayıcı, oturum açılışında, hata olursa yeniden başlat.
+- `config.toml`: süreler/eşikler, healthchecks.io ping URL'i, yayın kalitesi, port.
+- `calibration.json`: ROI'ler, şablon yolları, eşikler, chat anahtar ifadeleri.
+- Gizli bilgiler (VAPID private key, healthchecks URL) git'e girmez (`.gitignore`).
+
+## 11. Kapsam dışı (v1)
+
+- Birden fazla client/karakter (tasarım buna engel değil).
+- Oyuna girdi göndermek, telefondan kontrol.
+- Chat'ten para sayımı, Genie açık/kapalı tespiti.
+- Küçültülmüş pencereyi okumak (teknik olarak mümkün değil; "Kör" bildirimi verilir).
+- WebRTC yayını, native uygulama, Pushover (sonradan eklenebilir).
+
+## 12. Uygulama sırası
+
+1. **Ajan çekirdeği:** capture, process_watch, `snap` komutu, storage.
+2. **Kalibrasyon + detectors** (kullanıcıdan örnek ekranlar) ve testleri.
+3. **monitor + notifier (Web Push) + heartbeat.**
+4. **api + PWA:** Durum, Olaylar, Ayarlar.
+5. **Canlı yayın.**
+6. **Kurulum:** Tailscale, Görev Zamanlayıcı, iPhone kurulumu.
