@@ -74,7 +74,7 @@ def test_api_reads_the_status_published_by_the_loop_thread(tmp_path):
     def action(agent):
         def run(server):
             assert agent.started.wait(5)
-            with TestClient(server.app) as client:
+            with TestClient(server.app, base_url="http://127.0.0.1") as client:
                 body = client.get("/api/status").json()
             assert not agent.stopped.is_set()  # the loop keeps running while the server serves
             return body

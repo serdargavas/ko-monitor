@@ -59,6 +59,8 @@ Bilgisayarın tarayıcısında `http://127.0.0.1:8765` açılır: Durum ekranı 
    `status` çıktısındaki adresi not al: `https://<bilgisayar-adı>.<tailnet>.ts.net`. Bu adres yalnızca senin Tailscale cihazlarından açılır; ek şifre yoktur.
    Yayını kaldırmak için: `tailscale serve reset`.
 
+   `tailscale serve` ile yayınlanan her şey (canlı görüntü dahil) tailnet'inin izin verdiği her cihazdan açılabilir; bu bilgisayarı (node) başkalarıyla paylaşma. Telefonda sayfa yerine HTTP 400 "Invalid host header" görürsen `logs\agent.log` dosyasıyla birlikte bunu bildir (sunucu yalnızca `127.0.0.1`, `localhost` ve `*.ts.net` adreslerine yanıt verir; `tailscale serve`'ün `.ts.net` adresini ilettiği varsayılıyor).
+
 ## 6. iPhone uygulaması (PWA) ve bildirimler
 
 Gereken: **iOS 16.4** veya üstü. Web Push iPhone'da yalnızca ana ekrana eklenmiş uygulamada çalışır.

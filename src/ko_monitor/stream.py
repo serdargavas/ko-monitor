@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ko_monitor.capture import FrameSource
 from ko_monitor.models import CaptureStatus
+from ko_monitor.origin import origin_allowed
 
 log = logging.getLogger(__name__)
 
@@ -109,6 +110,10 @@ def stream_router(source: FrameSource, default_quality: str) -> APIRouter:
         # 403, and browsers then see a bare 1006 (indistinguishable from a dropped network
         # connection) instead of the real 1008 reason.
         await websocket.accept()
+        if not origin_allowed(websocket.headers):
+            # WebSockets bypass CORS: without this any page the browser opens could watch.
+            await websocket.close(code=1008, reason="origin not allowed")
+            return
         preset = STREAM_PRESETS.get(quality or default_quality)
         if preset is None:
             await websocket.close(code=1008, reason="unknown stream quality")

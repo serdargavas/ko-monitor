@@ -4,17 +4,19 @@ import dataclasses
 import logging
 import mimetypes
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from fastapi import FastAPI, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ko_monitor.capture import FrameSource
 from ko_monitor.config import PROJECT_ROOT
 from ko_monitor.models import Event, EventKind
 from ko_monitor.notifier import Notifier
+from ko_monitor.origin import origin_allowed
 from ko_monitor.status import StatusBoard
 from ko_monitor.storage import Storage
 from ko_monitor.stream import stream_router
@@ -23,6 +25,8 @@ log = logging.getLogger(__name__)
 
 WEB_DIR = PROJECT_ROOT / "web"
 DAY_S = 86400.0
+# Host headers the server answers to; anything else (e.g. a DNS-rebinding page) gets 400.
+TRUSTED_HOSTS = ["127.0.0.1", "localhost", "*.ts.net"]
 
 # The Windows registry can map .js to text/plain, which browsers refuse for ES modules,
 # and .webmanifest is unknown to Python's defaults.
@@ -48,6 +52,11 @@ class SubscriptionIn(BaseModel):
     keys: SubscriptionKeys
 
 
+def require_same_origin(request: Request) -> None:
+    if not origin_allowed(request.headers):
+        raise HTTPException(status_code=403, detail="origin not allowed")
+
+
 def create_app(
     storage: Storage,
     board: StatusBoard,
@@ -58,9 +67,14 @@ def create_app(
     stream_quality: str = "medium",
     web_dir: Path = WEB_DIR,
     now: Callable[[], float] = time.time,
+    extra_hosts: Sequence[str] = (),
 ) -> FastAPI:
     """source and stream_quality feed the live stream route added in stream.py (Task 3)."""
     app = FastAPI(title="KO Monitor", docs_url=None, redoc_url=None, openapi_url=None)
+    # Covers HTTP and WebSocket scopes; www_redirect=False: never redirect to another host.
+    app.add_middleware(
+        TrustedHostMiddleware, allowed_hosts=[*TRUSTED_HOSTS, *extra_hosts], www_redirect=False
+    )
 
     @app.middleware("http")
     async def cache_headers(request: Request, call_next):
@@ -90,13 +104,13 @@ def create_app(
     def get_vapid_key():
         return {"key": vapid_public_key}
 
-    @app.post("/api/push/subscribe", status_code=201)
+    @app.post("/api/push/subscribe", status_code=201, dependencies=[Depends(require_same_origin)])
     def subscribe(subscription: SubscriptionIn):
         storage.add_subscription(subscription.endpoint, subscription.keys.model_dump(), now())
         log.info("push subscription saved")
         return {"ok": True}
 
-    @app.post("/api/push/test")
+    @app.post("/api/push/test", dependencies=[Depends(require_same_origin)])
     def push_test():
         # Sync endpoint: FastAPI runs it in a worker thread, so push retries do not block the event loop.
         count = len(storage.subscriptions())

@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from starlette.testclient import WebSocketDenialResponse
 from starlette.websockets import WebSocketDisconnect
 
 from ko_monitor.api import create_app
@@ -78,7 +79,7 @@ def make_client(tmp_path):
         storages.append(storage)
         app = create_app(
             storage, StatusBoard(), source, FakeNotifier(), "KEY",
-            stream_quality=default_quality, web_dir=tmp_path,
+            stream_quality=default_quality, web_dir=tmp_path, extra_hosts=["testserver"],
         )
         return TestClient(app)
 
@@ -94,7 +95,7 @@ def decode(data: bytes) -> np.ndarray:
 
 
 @contextlib.contextmanager
-def open_stream(client: TestClient, url: str):
+def open_stream(client: TestClient, url: str, headers: dict | None = None):
     """client.websocket_connect(), tolerant of a test-harness-only cleanup race.
 
     Starlette's WebSocketTestSession.__exit__ blocks on a future for its background portal
@@ -105,7 +106,7 @@ def open_stream(client: TestClient, url: str):
     inside the `with` block (an assertion, a WebSocketDisconnect from pytest.raises, ...) is
     still propagated untouched.
     """
-    session = client.websocket_connect(url)
+    session = client.websocket_connect(url, headers=dict(headers or {}))
     ws = session.__enter__()
     try:
         yield ws
@@ -209,6 +210,34 @@ def test_unknown_quality_is_rejected_without_capturing(make_client):
     assert info.value.code == 1008
     assert info.value.reason == "unknown stream quality"
     assert source.calls == 0 and source.rates == []
+
+
+def test_foreign_origin_is_rejected_without_capturing(make_client):
+    # WebSockets are not covered by CORS: any page the browser opens could otherwise watch.
+    source = FakeSource()
+    with make_client(source) as client:
+        with pytest.raises(WebSocketDisconnect) as info:
+            with open_stream(client, "/api/stream", headers={"origin": "https://evil.example"}) as ws:
+                ws.receive_bytes()
+    assert (info.value.code, info.value.reason) == (1008, "origin not allowed")
+    assert source.calls == 0 and source.rates == []
+
+
+def test_foreign_host_cannot_open_the_stream(make_client):
+    source = FakeSource()
+    with make_client(source) as client:
+        with pytest.raises(WebSocketDenialResponse) as info:
+            with open_stream(client, "/api/stream", headers={"host": "evil.example", "origin": "http://evil.example"}):
+                pass
+    assert info.value.status_code == 400
+    assert source.calls == 0 and source.rates == []
+
+
+@pytest.mark.parametrize("headers", [{"origin": "http://testserver"}, {}])
+def test_same_host_origin_or_no_origin_streams(make_client, headers):
+    with make_client(FakeSource()) as client:
+        with open_stream(client, "/api/stream?quality=low", headers=headers) as ws:
+            assert decode(ws.receive_bytes()).shape == (540, 960, 3)
 
 
 def test_stream_stops_capturing_after_the_client_disconnects(make_client):

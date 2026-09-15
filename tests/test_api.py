@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from ko_monitor.api import create_app
+from ko_monitor.api import TRUSTED_HOSTS, create_app
 from ko_monitor.models import CaptureStatus, Event, EventKind, Snapshot, State
 from ko_monitor.status import AgentStatus, StatusBoard
 from ko_monitor.storage import Storage
@@ -52,6 +52,7 @@ class Env:
         app = create_app(
             self.storage, self.board, FakeSource(), self.notifier, "PUBLICKEY",
             web_dir=make_web_dir(tmp_path), now=lambda: NOW,
+            extra_hosts=["testserver"],  # TestClient's default Host header
         )
         self.client = TestClient(app)
 
@@ -183,3 +184,37 @@ def test_static_files_have_correct_content_types(env, path, content_type):
 def test_unknown_paths_are_404(env):
     assert env.client.get("/api/nope").status_code == 404
     assert env.client.get("/nope.js").status_code == 404
+
+
+def test_trusted_hosts_are_localhost_and_the_tailnet():
+    assert TRUSTED_HOSTS == ["127.0.0.1", "localhost", "*.ts.net"]
+
+
+def test_foreign_host_header_is_rejected(env):
+    # DNS rebinding: a foreign page resolving its own name to 127.0.0.1 sends its own Host.
+    response = env.client.get("/api/status", headers={"host": "rebind.evil.example"})
+    assert response.status_code == 400
+    assert env.client.get("/", headers={"host": "evil.example"}).status_code == 400
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1:8765", "localhost:8765", "pc.tail1234.ts.net"])
+def test_local_and_tailnet_hosts_are_allowed(tmp_path, host):
+    storage = Storage(tmp_path / "db.sqlite3")
+    app = create_app(storage, StatusBoard(), FakeSource(), FakeNotifier(), "K", web_dir=make_web_dir(tmp_path))
+    with TestClient(app) as client:
+        assert client.get("/api/status", headers={"host": host}).status_code == 200
+        assert client.get("/api/status").status_code == 400  # TestClient's "testserver" is not trusted by default
+    storage.close()
+
+
+@pytest.mark.parametrize("path, body", [("/api/push/subscribe", BROWSER_SUBSCRIPTION), ("/api/push/test", None)])
+def test_foreign_origin_cannot_use_push_endpoints(env, path, body):
+    response = env.client.post(path, json=body, headers={"origin": "https://evil.example"})
+    assert response.status_code == 403
+    assert env.storage.subscriptions() == [] and env.notifier.sent == []
+
+
+def test_same_host_origin_can_subscribe(env):
+    headers = {"origin": "https://pc.tail1234.ts.net", "host": "pc.tail1234.ts.net"}
+    assert env.client.post("/api/push/subscribe", json=BROWSER_SUBSCRIPTION, headers=headers).status_code == 201
+    assert env.client.post("/api/push/test", headers=headers).status_code == 200

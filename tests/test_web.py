@@ -30,7 +30,7 @@ class NullNotifier:
 
 @pytest.fixture(scope="module")
 def client():
-    app = create_app(object(), StatusBoard(), NullSource(), NullNotifier(), "KEY")
+    app = create_app(object(), StatusBoard(), NullSource(), NullNotifier(), "KEY", extra_hosts=["testserver"])
     with TestClient(app) as c:
         yield c
 
