@@ -60,6 +60,7 @@ def test_sends_to_every_subscription():
     assert call["vapid_private_key"] == str(Path("data/vapid_private.pem"))
     assert call["vapid_claims"] == {"sub": "mailto:me@example.com"}
     assert call["ttl"] == 300
+    assert call["timeout"] == 10
     assert sleeps == []
 
 

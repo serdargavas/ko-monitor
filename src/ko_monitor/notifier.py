@@ -66,6 +66,7 @@ class WebPushNotifier:
                     vapid_private_key=str(self._key_path),
                     vapid_claims={"sub": self._contact},
                     ttl=int(self._max_age_s),
+                    timeout=10,
                 )
                 return True
             except WebPushException as exc:
