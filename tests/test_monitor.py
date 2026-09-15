@@ -341,3 +341,76 @@ def test_blind_gap_does_not_fake_recovery_from_dialog_disconnect(m):
     assert m.observe(ok(40, dialog_text=NOTICE)) == []
     assert m.state == State.DISCONNECTED
     assert kinds(m.observe(ok(42))) == [(EventKind.RECOVERED, False)]
+
+
+def test_disconnect_dialog_reads_must_be_consecutive(m):
+    text = "Disconnected from server"
+    assert m.observe(ok(2, dialog_text=text, disconnect_dialog=True)) == []
+    assert m.observe(ok(4, dialog_text="Disc0nn3ct3d")) == []
+    assert m.observe(ok(6, dialog_text=text, disconnect_dialog=True)) == []
+    assert m.state == State.ALIVE
+
+
+def test_disconnect_dialog_misreads_far_apart_do_not_replace_death(m):
+    text = "Press OK to teleport back to the re-spawn point."
+    m.observe(ok(2, hp=0, dialog_text=text, revive_dialog=True))
+    assert kinds(m.observe(ok(4, hp=0, dialog_text=text, revive_dialog=True))) == [(EventKind.DEAD, True)]
+    assert m.observe(ok(12, hp=None, dialog_text="server", disconnect_dialog=True)) == []
+    for ts in range(14, 1200, 2):
+        assert m.observe(ok(ts, hp=0, dialog_text=text, revive_dialog=True)) == [], ts
+    assert m.observe(ok(1200, hp=None, dialog_text="server", disconnect_dialog=True)) == []
+    assert m.state == State.DEAD
+
+
+def test_disconnect_dialog_while_dead_does_not_count(m):
+    text = "Teleport to re-spawn? Server notice"
+    events = []
+    for ts in range(2, 120, 2):
+        events += m.observe(ok(ts, hp=0, dialog_text=text, revive_dialog=False, disconnect_dialog=True))
+    assert kinds(events) == [(EventKind.DEAD, True)]
+    assert m.state == State.DEAD
+
+
+def test_unknown_dialog_while_dead_never_starts_timer(m):
+    events = []
+    for ts in range(2, 100, 2):
+        events += m.observe(ok(ts, hp=0, dialog_text=NOTICE))
+    assert kinds(events) == [(EventKind.DEAD, True)]
+    assert m.state == State.DEAD
+
+
+def test_unknown_dialog_timer_cleared_by_hp_zero(m):
+    assert m.observe(ok(2, dialog_text=NOTICE)) == []
+    assert m.observe(ok(20, hp=0, dialog_text=NOTICE)) == []
+    assert m.observe(ok(22, dialog_text=NOTICE)) == []
+    assert m.observe(ok(51, dialog_text=NOTICE)) == []
+    assert kinds(m.observe(ok(52, dialog_text=NOTICE))) == [(EventKind.DISCONNECTED, True)]
+
+
+def test_death_dialog_confirm_recovers_without_disconnect(m):
+    text = "Press OK to teleport back to the re-spawn point."
+    events = []
+    for ts in range(2, 40, 2):
+        events += m.observe(ok(ts, hp=0, dialog_text=text, revive_dialog=True))
+    assert kinds(events) == [(EventKind.DEAD, True)]
+    events = m.observe(ok(40, hp=9996))
+    assert kinds(events) == [(EventKind.RECOVERED, False)]
+    assert events[0].detail == "dead"
+    for ts in range(42, 120, 2):
+        assert m.observe(ok(ts, hp=9996)) == [], ts
+    assert m.state == State.ALIVE
+
+
+def test_blind_gap_keeps_unknown_dialog_timer_only_for_dialog_disconnect(m):
+    hidden_hud_dialog = dict(hud_visible=False, hp=9000, zone=None, dialog_text=NOTICE)
+    m.observe(ok(2, **NO_HUD))
+    assert kinds(m.observe(ok(17, **NO_HUD))) == [(EventKind.DISCONNECTED, True)]
+    assert m.observe(ok(19, **hidden_hud_dialog)) == []
+    # The current DISCONNECTED is not dialog-caused: the unconfirmed dialog timer restarts.
+    assert m.observe(Observation(21, True, CaptureStatus.MINIMIZED)) == []
+    assert m.observe(ok(40, **hidden_hud_dialog)) == []
+    assert m.observe(ok(50, **hidden_hud_dialog)) == []
+    assert kinds(m.observe(ok(52, dialog_text=NOTICE))) == [(EventKind.RECOVERED, False)]
+    events = m.observe(ok(70, dialog_text=NOTICE))
+    assert kinds(events) == [(EventKind.DISCONNECTED, True)]
+    assert events[0].detail == NOTICE

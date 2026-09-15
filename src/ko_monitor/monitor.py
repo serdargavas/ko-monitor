@@ -90,6 +90,7 @@ class Monitor:
             # already current is kept: leaving that state needs a positive reading.
             if self.state != State.DISCONNECTED:
                 self._hud_missing_since = None
+            if not (self.state == State.DISCONNECTED and self._disconnect_by_dialog):
                 self._unknown_dialog_since = None
             if self.state != State.FROZEN:
                 self._still_since = None
@@ -124,10 +125,12 @@ class Monitor:
         elif r.hp is not None and r.hp > 0:
             self._dead_reads = 0
 
-        if r.login_screen or r.disconnect_dialog:
+        # While dead (hp == 0) a disconnect-dialog read is most likely the death dialog with a
+        # nameplate leaking through; DEAD already covers it. A dialog-caused DISCONNECTED is
+        # held through garbled reads by _target_state, so reads here stay strictly consecutive.
+        if r.login_screen or (r.disconnect_dialog and r.hp != 0):
             self._disconnect_reads += 1
-        elif r.hud_visible and r.dialog_text is None:
-            # The HUD stays visible behind a disconnect dialog: only a closed dialog resets.
+        elif r.hud_visible:
             self._disconnect_reads = 0
 
         if r.dialog_text is None or r.revive_dialog or r.disconnect_dialog or r.hp == 0:
