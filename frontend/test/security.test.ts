@@ -9,6 +9,7 @@ const sources = import.meta.glob("../src/**/*.{ts,tsx,css}", { query: "?raw", im
 describe("security", () => {
   it("scans every source file", () => {
     expect(Object.keys(sources)).toContain("../src/App.tsx");
+    expect(Object.keys(sources)).toContain("../src/sw.ts");
   });
 
   it("never renders raw HTML", () => {
