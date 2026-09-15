@@ -141,3 +141,9 @@ def test_icon_script_draws_opaque_square_icons(tmp_path):
     written = module.main(tmp_path)
     assert [p.name for p in written] == ["icon-180.png", "icon-192.png", "icon-512.png"]
     assert cv2.imread(str(written[2])).shape == (512, 512, 3)
+
+
+def test_status_and_events_screens_are_registered_first_status():
+    screens = registered_screens()
+    assert screens[0] == "status"
+    assert {"status", "events", "settings"} <= set(screens)

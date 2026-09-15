@@ -1,7 +1,9 @@
+import events from "./screens/events.js";
 import settings from "./screens/settings.js";
+import status from "./screens/status.js";
 
 // Route name → screen module. The first entry is the default route.
-const SCREENS = { settings };
+const SCREENS = { status, events, settings };
 
 const root = document.getElementById("screen");
 let unmount = null;
