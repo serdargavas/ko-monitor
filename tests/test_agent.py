@@ -1,5 +1,7 @@
+import re
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
@@ -71,7 +73,7 @@ class FlakySource(FakeSource):
 
 
 class Harness:
-    def __init__(self, tmp_path: Path, notify_result=True, source=None):
+    def __init__(self, tmp_path: Path, notify_result=True, source=None, **agent_kwargs):
         self.cfg = Config(data_dir=tmp_path)
         self.storage = Storage(tmp_path / "db.sqlite3")
         self.detector = FakeDetector()
@@ -81,7 +83,7 @@ class Harness:
         self.running = True
         self.agent = Agent(
             self.cfg, self.storage, source or FakeSource(), self.detector, Monitor(self.cfg.thresholds),
-            self.notifier, self.heartbeat, lambda: self.running, now=lambda: self.clock,
+            self.notifier, self.heartbeat, lambda: self.running, now=lambda: self.clock, **agent_kwargs,
         )
 
     def tick_at(self, ts: float, readings=None, running=True) -> float:
@@ -151,6 +153,75 @@ def test_capture_exception_is_observed_as_not_found(tmp_path):
     assert harness.kinds()[-1] == ("game_started", False)
     harness.tick_at(62)
     assert harness.kinds()[-1] == ("blind", True)
+    harness.storage.close()
+
+
+INCIDENT_NAME = re.compile(r"^\d{8}-\d{6}-dead\.png$")
+
+
+def test_dead_event_saves_the_analyzed_frame(tmp_path):
+    incidents = tmp_path / "incidents"
+    harness = Harness(tmp_path, incident_dir=incidents)
+    harness.tick_at(0, alive())
+    harness.tick_at(2, alive(hp=0))
+    assert not incidents.exists()
+    harness.tick_at(4, alive(hp=0))
+    files = sorted(incidents.iterdir())
+    assert len(files) == 1 and INCIDENT_NAME.match(files[0].name), files
+    saved = cv2.imread(str(files[0]))
+    assert saved is not None and saved.shape == FRAME.shape
+    harness.tick_at(6, alive(hp=0))
+    assert len(list(incidents.iterdir())) == 1
+    harness.storage.close()
+
+
+def test_default_incident_dir_is_under_data_dir(h):
+    h.tick_at(0, alive())
+    h.tick_at(2, alive(hp=0))
+    h.tick_at(4, alive(hp=0))
+    assert len(list((h.cfg.data_dir / "incidents").glob("*-dead.png"))) == 1
+
+
+def test_incident_retention_deletes_oldest(tmp_path):
+    incidents = tmp_path / "incidents"
+    incidents.mkdir()
+    # The fake clock starts at the epoch, so older names must predate 1970 in any timezone.
+    old = ["19000101-000000-frozen.png", "19000101-000001-blind.png", "19000101-000002-dead.png"]
+    for name in old:
+        (incidents / name).write_bytes(b"old")
+    harness = Harness(tmp_path, incident_dir=incidents, incident_limit=3)
+    harness.tick_at(0, alive())
+    harness.tick_at(2, alive(hp=0))
+    harness.tick_at(4, alive(hp=0))
+    names = sorted(p.name for p in incidents.iterdir())
+    assert names[:2] == old[1:]
+    assert len(names) == 3 and INCIDENT_NAME.match(names[2])
+    harness.storage.close()
+
+
+def test_unwritable_incident_dir_is_logged_and_tick_continues(tmp_path, caplog):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_bytes(b"")
+    harness = Harness(tmp_path, incident_dir=blocker / "incidents")
+    harness.tick_at(0, alive())
+    harness.tick_at(2, alive(hp=0))
+    with caplog.at_level("ERROR", logger="ko_monitor.agent"):
+        assert harness.tick_at(4, alive(hp=0)) == 2.0
+    assert harness.kinds()[-1] == ("dead", True)
+    assert any("incident" in r.getMessage() for r in caplog.records)
+    harness.storage.close()
+
+
+def test_blind_without_frame_saves_nothing(tmp_path):
+    incidents = tmp_path / "incidents"
+    source = FlakySource()
+    harness = Harness(tmp_path, source=source, incident_dir=incidents)
+    harness.tick_at(0, alive())
+    source.fail = True
+    harness.tick_at(2)
+    harness.tick_at(62)
+    assert harness.kinds()[-1] == ("blind", True)
+    assert not incidents.exists()
     harness.storage.close()
 
 

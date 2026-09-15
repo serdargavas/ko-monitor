@@ -71,6 +71,29 @@ def test_chat_is_read_at_most_once_per_chat_interval(calib, monkeypatch):
     assert len(chat_reads) == 2
 
 
+def test_dialog_text_changes_are_logged_once(calib, monkeypatch, caplog):
+    import ko_monitor.detectors as detectors
+
+    long_text = "Disconnected " + "x" * 200
+    texts = iter([None, "Notice", "Notice", long_text, None, None])
+    monkeypatch.setattr(detectors, "read_hud", lambda frame, calib, ocr: (True, 9000, 9996, "Ronark Land"))
+    monkeypatch.setattr(detectors, "read_inventory", lambda frame, inv, ocr: (None, None, None, None))
+    monkeypatch.setattr(detectors, "read_chat", lambda frame, calib, ocr, tracker: [])
+    monkeypatch.setattr(detectors, "template_present", lambda frame, spec: None)
+    monkeypatch.setattr(detectors, "read_dialog", lambda frame, spec, ocr, *args: (next(texts), False, False))
+    width, height = calib.resolution
+    frame = np.zeros((height, width, 3), np.uint8)
+    detector = Detector(calib, None)
+    with caplog.at_level("INFO", logger="ko_monitor.detectors"):
+        for _ in range(6):
+            detector.detect(frame)
+    messages = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+    assert len(messages) == 3, messages
+    assert "Notice" in messages[0]
+    assert long_text[:120] in messages[1] and long_text[:121] not in messages[1]
+    assert "None" in messages[2]
+
+
 @pytest.mark.parametrize(
     "template, dialog, expected",
     [

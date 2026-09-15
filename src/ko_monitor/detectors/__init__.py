@@ -20,6 +20,8 @@ from ko_monitor.ocr import Ocr
 
 log = logging.getLogger(__name__)
 
+_DIALOG_LOG_MAX = 120
+
 
 def _either(a: bool | None, b: bool | None) -> bool | None:
     """True if either source saw it; None only when both could not tell."""
@@ -48,6 +50,14 @@ class Detector:
         self._now = now
         self._last_chat_read: float | None = None
         self._mismatched_size: tuple[int, int] | None = None
+        self._dialog_text_last: str | None = None
+
+    def _log_dialog_text(self, text: str | None) -> None:
+        """Logs every change of the center dialog text: the first real disconnect text teaches us."""
+        if text == self._dialog_text_last:
+            return
+        self._dialog_text_last = text
+        log.info("dialog text: %r", None if text is None else text[:_DIALOG_LOG_MAX])
 
     def _chat_events(self, frame: np.ndarray, hud_visible: bool) -> list[str]:
         """Chat OCR (det + rec) is the expensive part of a tick: run it only every chat_interval_s."""
@@ -78,6 +88,7 @@ class Detector:
         )
         # Cheap enough for every tick: one template match, plus <=2 rec-only lines when open.
         dialog_text, dialog_revive, dialog_disconnect = read_dialog(frame, self._calib.dialog, self._ocr)
+        self._log_dialog_text(dialog_text)
         return Readings(
             hud_visible=hud_visible,
             hp=hp,
