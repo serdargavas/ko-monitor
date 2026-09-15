@@ -60,8 +60,18 @@ class FakeHeartbeat:
         return True
 
 
+class FlakySource(FakeSource):
+    def __init__(self):
+        self.fail = False
+
+    def latest(self):
+        if self.fail:
+            raise OSError("capture session died")
+        return super().latest()
+
+
 class Harness:
-    def __init__(self, tmp_path: Path, notify_result=True):
+    def __init__(self, tmp_path: Path, notify_result=True, source=None):
         self.cfg = Config(data_dir=tmp_path)
         self.storage = Storage(tmp_path / "db.sqlite3")
         self.detector = FakeDetector()
@@ -70,7 +80,7 @@ class Harness:
         self.clock = 0.0
         self.running = True
         self.agent = Agent(
-            self.cfg, self.storage, FakeSource(), self.detector, Monitor(self.cfg.thresholds),
+            self.cfg, self.storage, source or FakeSource(), self.detector, Monitor(self.cfg.thresholds),
             self.notifier, self.heartbeat, lambda: self.running, now=lambda: self.clock,
         )
 
@@ -129,6 +139,19 @@ def test_detector_crash_does_not_stop_the_loop(h):
     h.tick_at(0)
     assert h.tick_at(2, RuntimeError("boom")) == 2.0
     assert h.agent.monitor.state.value == "alive"
+
+
+def test_capture_exception_is_observed_as_not_found(tmp_path):
+    source = FlakySource()
+    harness = Harness(tmp_path, source=source)
+    harness.tick_at(0, alive())
+    source.fail = True
+    assert harness.tick_at(2) == 2.0
+    harness.tick_at(61)
+    assert harness.kinds()[-1] == ("game_started", False)
+    harness.tick_at(62)
+    assert harness.kinds()[-1] == ("blind", True)
+    harness.storage.close()
 
 
 class FakeStop:

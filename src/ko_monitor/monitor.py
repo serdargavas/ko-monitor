@@ -79,6 +79,12 @@ class Monitor:
             events.extend(self._inventory_events(obs.ts, obs.readings))
         elif self._blind_since is None:
             self._blind_since = obs.ts
+            # "Uninterrupted" timers must not bridge a blind gap. A timer whose state is
+            # already current is kept: leaving that state needs a positive reading.
+            if self.state != State.DISCONNECTED:
+                self._hud_missing_since = None
+            if self.state != State.FROZEN:
+                self._still_since = None
 
         if self._in_grace:
             self._clear_timers()

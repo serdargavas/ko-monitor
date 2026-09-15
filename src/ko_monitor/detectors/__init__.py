@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 
@@ -15,6 +16,8 @@ from ko_monitor.detectors.inventory import read_inventory
 from ko_monitor.detectors.templates import template_present
 from ko_monitor.models import Readings
 from ko_monitor.ocr import Ocr
+
+log = logging.getLogger(__name__)
 
 
 class Detector:
@@ -34,6 +37,7 @@ class Detector:
         self._chat_interval_s = chat_interval_s
         self._now = now
         self._last_chat_read: float | None = None
+        self._mismatched_size: tuple[int, int] | None = None
 
     def _chat_events(self, frame: np.ndarray, hud_visible: bool) -> list[str]:
         """Chat OCR (det + rec) is the expensive part of a tick: run it only every chat_interval_s."""
@@ -48,7 +52,15 @@ class Detector:
     def detect(self, frame: np.ndarray) -> Readings | None:
         height, width = frame.shape[:2]
         if (width, height) != self._calib.resolution:
+            if self._mismatched_size != (width, height):
+                self._mismatched_size = (width, height)
+                expected_w, expected_h = self._calib.resolution
+                log.warning(
+                    "frame is %dx%d but calibration expects %dx%d; frames are unreadable",
+                    width, height, expected_w, expected_h,
+                )
             return None
+        self._mismatched_size = None
         hud_visible, hp, hp_max, zone = read_hud(frame, self._calib, self._ocr)
         templates = self._calib.templates
         inventory_open, money, slots_used, slots_total = read_inventory(

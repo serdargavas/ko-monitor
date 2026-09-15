@@ -25,7 +25,7 @@ class Heartbeat:
         try:
             self._client.get(self._ping_url).raise_for_status()
             return True
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             log.warning("heartbeat ping failed: %s", exc)
             return False
 
@@ -39,6 +39,6 @@ class Heartbeat:
                 headers={"X-Api-Key": self._api_key},
             ).raise_for_status()
             return True
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             log.warning("heartbeat pause failed: %s", exc)
             return False

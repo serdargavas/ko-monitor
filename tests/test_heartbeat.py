@@ -40,6 +40,14 @@ def test_pause_uses_management_api():
     assert request.headers["X-Api-Key"] == "secret"
 
 
+def test_malformed_url_is_reported_not_raised():
+    requests = []
+    hb = Heartbeat("https://hc-ping.com/\x00", "secret", client_recording(requests))
+    assert hb.ping() is False
+    assert hb.pause() is False
+    assert requests == []
+
+
 def test_pause_needs_api_key():
     requests = []
     assert Heartbeat(URL, "", client_recording(requests)).pause() is False

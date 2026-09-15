@@ -195,6 +195,41 @@ def test_startup_grace_restarts_on_every_launch(m):
     assert kinds(events) == [(EventKind.GAME_STARTED, False)]
 
 
+def test_blind_gap_restarts_uninterrupted_timers(m):
+    assert m.observe(ok(2, **NO_HUD)) == []
+    for ts in range(4, 22, 2):
+        assert m.observe(Observation(ts, True, CaptureStatus.MINIMIZED)) == [], ts
+    assert m.observe(ok(22, **NO_HUD)) == []
+    assert m.observe(ok(36, **NO_HUD)) == []
+    assert kinds(m.observe(ok(37, **NO_HUD))) == [(EventKind.DISCONNECTED, True)]
+
+
+def test_blind_gap_restarts_frozen_timer(m):
+    assert m.observe(ok(2, frame_diff=0.0)) == []
+    assert m.observe(Observation(100, True, CaptureStatus.BLACK)) == []
+    assert m.observe(ok(110, frame_diff=0.0)) == []
+    assert m.observe(ok(229, frame_diff=0.0)) == []
+    assert kinds(m.observe(ok(230, frame_diff=0.0))) == [(EventKind.FROZEN, True)]
+
+
+def test_blind_gap_does_not_fake_recovery_from_soft_disconnect(m):
+    m.observe(ok(2, **NO_HUD))
+    assert kinds(m.observe(ok(17, **NO_HUD))) == [(EventKind.DISCONNECTED, True)]
+    assert m.observe(Observation(19, True, CaptureStatus.MINIMIZED)) == []
+    assert m.observe(ok(21, **NO_HUD)) == []
+    assert m.observe(ok(40, **NO_HUD)) == []
+    assert m.state == State.DISCONNECTED
+
+
+def test_blind_gap_does_not_fake_recovery_from_frozen(m):
+    m.observe(ok(2, frame_diff=0.0))
+    assert kinds(m.observe(ok(122, frame_diff=0.0))) == [(EventKind.FROZEN, True)]
+    assert m.observe(Observation(124, True, CaptureStatus.BLACK)) == []
+    assert m.observe(ok(126, frame_diff=0.0)) == []
+    assert m.observe(ok(250, frame_diff=0.0)) == []
+    assert m.state == State.FROZEN
+
+
 def test_snapshot_when_closed():
     monitor = Monitor(T)
     monitor.observe(Observation(0, False))

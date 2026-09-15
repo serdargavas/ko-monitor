@@ -24,6 +24,19 @@ def test_wrong_resolution_is_unreadable(calib, ocr):
     assert Detector(calib, ocr).detect(np.zeros((1080, 1920, 3), np.uint8)) is None
 
 
+def test_resolution_mismatch_is_logged_once_per_size(calib, caplog):
+    detector = Detector(calib, None)
+    small = np.zeros((1080, 1920, 3), np.uint8)
+    other = np.zeros((720, 1280, 3), np.uint8)
+    with caplog.at_level("WARNING", logger="ko_monitor.detectors"):
+        assert detector.detect(small) is None
+        assert detector.detect(small) is None
+        assert detector.detect(other) is None
+    messages = [r.getMessage() for r in caplog.records]
+    assert len(messages) == 2
+    assert "1920x1080" in messages[0] and "1280x720" in messages[1]
+
+
 def test_chat_is_read_at_most_once_per_chat_interval(calib, monkeypatch):
     import ko_monitor.detectors as detectors
 

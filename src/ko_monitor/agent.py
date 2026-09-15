@@ -48,7 +48,11 @@ class Agent:
         ts = self._now()
         running = self._process_running()
         if running:
-            status, frame = self._source.latest()
+            try:
+                status, frame = self._source.latest()
+            except Exception:
+                log.exception("capture failed")
+                status, frame = CaptureStatus.NOT_FOUND, None
             readings = None
             if status == CaptureStatus.OK and frame is not None:
                 try:
