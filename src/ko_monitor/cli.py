@@ -233,6 +233,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # OCR output can contain characters outside the Windows console's active code page
+    # (e.g. cp1254); reconfigure to UTF-8 so `ocr`/`detect` never crash on them.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     args = build_parser().parse_args(argv)
     try:
         cfg = load_config(args.config, PROJECT_ROOT)

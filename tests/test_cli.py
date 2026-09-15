@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 
 import cv2
@@ -66,3 +67,31 @@ def test_run_config_warnings(tmp_path: Path):
         warnings = run_config_warnings(cfg, present)
         assert len(warnings) == 1 and "pause" in warnings[0]
     assert run_config_warnings(Config(heartbeat=HeartbeatConfig(ping_url="https://hc-ping.com/pingkey/my-check")), present) == []
+
+
+def test_ocr_command_survives_characters_outside_the_console_code_page(tmp_path: Path, monkeypatch, capsys):
+    """On Windows the console defaults to a legacy code page (e.g. cp1254); OCR text
+    containing characters outside it used to crash `ocr` with UnicodeEncodeError."""
+    import ko_monitor.ocr as ocr_module
+    from ko_monitor.ocr import OcrLine
+
+    class FakeOcr:
+        def __init__(self, min_score=0.0):
+            pass
+
+        def read_block(self, image):
+            return [OcrLine("福", 0.99, (0, 0, 10, 10))]
+
+    monkeypatch.setattr(ocr_module, "Ocr", FakeOcr)
+    # capsys's own capture stream may or may not support reconfigure depending on capture mode.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="cp1254", errors="strict")
+
+    image = tmp_path / "in.png"
+    cv2.imwrite(str(image), np.zeros((10, 10, 3), np.uint8))
+
+    code = main(["--config", str(tmp_path / "none.toml"), "ocr", str(image)])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "福" in out
