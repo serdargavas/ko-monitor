@@ -20,7 +20,7 @@ Kullanım senaryoları: Knight Genie açıkken bilgisayar başında değilken (A
 | **Sadece ekran okuma (read-only).** Bellek okuma, paket dinleme, oyuna tuş/tıklama gönderme yok. | Client ACME anti-cheat ile korunuyor; bunlar ban riski ve sunucu kuralı ihlali. |
 | **Ekran yakalama: Windows Graphics Capture** (`windows-capture` paketi). | Spike'ta hem görünürken hem başka pencerenin arkasındayken doğru kare verdi. |
 | **Ajan: Python 3.12.** | Görüntü işleme (OpenCV, OCR) ekosistemi en güçlü. |
-| **Telefon: iPhone + PWA (React).** | Expo ile bildirim için yıllık Apple geliştirici hesabı gerekir; PWA ücretsiz. |
+| **Telefon: iPhone + PWA (derleme adımı olmayan HTML/CSS/JavaScript).** | Expo ile bildirim için yıllık Apple geliştirici hesabı gerekir; PWA ücretsiz. Bilgisayarda Node.js kurulu değil; yeni yazılım kurmamak için React + Vite yerine derleme gerektirmeyen vanilla ES modülleri seçildi (Plan 2). |
 | **Erişim: Tailscale + `tailscale serve`.** | Port açmadan dışarıdan erişim; PWA ve Web Push için gereken geçerli HTTPS sertifikası. |
 | **Dış canlılık kontrolü: healthchecks.io → ntfy.** | PC/internet/ajan çökerse ajan kendi bildirimini atamaz. |
 
@@ -57,8 +57,8 @@ Kullanım senaryoları: Knight Genie açıkken bilgisayar başında değilken (A
 | `notifier` | Arayüz: `send(event)`. v1 uygulaması: Web Push. Sonradan Pushover eklenebilir. | pywebpush |
 | `heartbeat` | Oyun izlenirken dakikada bir healthchecks.io ping; oyun normal kapanınca kontrolü duraklatır. | httpx |
 | `storage` | SQLite: `snapshots`, `events`, `push_subscriptions`. | sqlite3 |
-| `api` | FastAPI; yalnızca `127.0.0.1` üzerinde dinler; PWA'nın build dosyalarını da sunar. | FastAPI, uvicorn |
-| `pwa` | React + Vite + TypeScript + `vite-plugin-pwa`. | — |
+| `api` | FastAPI; yalnızca `127.0.0.1` üzerinde dinler; PWA'nın statik dosyalarını (`web/`) da sunar. Ajan döngüsüyle aynı süreçte, ayrı iş parçacığında çalışır. | FastAPI, uvicorn, websockets |
+| `pwa` | Vanilla HTML/CSS/JavaScript ES modülleri, derleme adımı yok; manifest ve service worker elle yazılır, ikonlar `scripts/make_icons.py` ile üretilir. (İlk taslakta React + Vite + TypeScript + `vite-plugin-pwa` idi; bu PC'de Node.js olmadığı için değiştirildi.) | — |
 
 `Readings` alanları (her biri okunamazsa `None` = bilinmiyor):
 `hud_visible` (bool: HP yazısı geçerli okundu mu), `hp`, `hp_max`, `zone`, `revive_dialog`, `login_screen`, `disconnect_dialog`, `dialog_text` (ekranın ortasındaki açık pencerenin okunan yazısı; pencere yoksa `None`), `chat_events` (liste: `inventory_full`, …), `inventory_open`, `money`, `slots_used`, `slots_total`, `frame_diff`.
