@@ -1,4 +1,4 @@
-const CACHE = "ko-monitor-v3";
+const CACHE = "ko-monitor-v4";
 // Every file under web/js must be listed (tests/test_web.py checks it). Bump CACHE when this list changes.
 const SHELL = [
   "/",
@@ -29,23 +29,48 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Network first (the PC is the only source of truth), cached shell when offline. API calls are never cached.
+// A phone on a flaky tailnet connection should not stare at a blank screen: after this long the
+// cached copy is used if there is one.
+const NETWORK_TIMEOUT_MS = 3000;
+
+function timeout(ms) {
+  return new Promise((resolve, reject) => setTimeout(() => reject(new Error("network timeout")), ms));
+}
+
+async function networkFirst(request) {
+  const network = fetch(request).then((response) => {
+    if (response.ok) {
+      const copy = response.clone();
+      caches.open(CACHE).then((cache) => cache.put(request, copy));
+    }
+    return response;
+  });
+  network.catch(() => {}); // a late failure after the timeout is not an unhandled rejection
+  try {
+    return await Promise.race([network, timeout(NETWORK_TIMEOUT_MS)]);
+  } catch (error) {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    try {
+      return await network; // timed out with nothing cached: a slow answer beats none
+    } catch (networkError) {
+      // Offline: only page loads get the app shell; a missing script or icon must not become HTML.
+      if (request.mode === "navigate") {
+        const shell = await caches.match("/index.html");
+        if (shell) return shell;
+      }
+      return Response.error();
+    }
+  }
+}
+
+// Network first (the PC is the only source of truth), cached copy when slow or offline. API calls are never cached.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) {
     return;
   }
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/index.html"))),
-  );
+  event.respondWith(networkFirst(event.request));
 });
 
 // Payload is exactly messages.render(): {title, body, url, kind, ts}.

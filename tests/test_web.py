@@ -117,6 +117,23 @@ def test_service_worker_shows_the_render_payload_and_opens_its_url():
         assert needle in text, needle
 
 
+def test_service_worker_times_out_and_only_navigations_fall_back_to_the_shell():
+    text = read("sw.js")
+    assert 'const CACHE = "ko-monitor-v4";' in text
+    assert "NETWORK_TIMEOUT_MS = 3000" in text
+    assert 'request.mode === "navigate"' in text
+    # Old bug: every failed asset (scripts, icons, ...) was answered with index.html.
+    assert 'cached || caches.match("/index.html")' not in text
+    assert 'url.pathname.startsWith("/api/")' in text
+
+
+def test_enabling_notifications_does_not_wait_forever_for_the_service_worker():
+    text = read("js/screens/settings.js")
+    assert "SW_READY_TIMEOUT_MS = 5000" in text
+    assert "Servis çalışanı hazır değil — sayfayı yenileyip tekrar dene" in text
+    assert "await navigator.serviceWorker.ready;" not in text
+
+
 def test_every_registered_screen_has_a_tab_and_a_module():
     screens = registered_screens()
     assert "settings" in screens

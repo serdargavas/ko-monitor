@@ -22,13 +22,29 @@ function pushSupported() {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
+// navigator.serviceWorker.ready never settles if the worker failed to install; do not hang the button.
+const SW_READY_TIMEOUT_MS = 5000;
+
+function serviceWorkerReady() {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("Servis çalışanı hazır değil — sayfayı yenileyip tekrar dene")),
+      SW_READY_TIMEOUT_MS,
+    );
+    navigator.serviceWorker.ready.then((registration) => {
+      clearTimeout(timer);
+      resolve(registration);
+    });
+  });
+}
+
 async function enableNotifications() {
   // iOS only shows the permission prompt when it is requested directly from the tap.
   const permission = await Notification.requestPermission();
   if (permission !== "granted") {
     throw new Error("Bildirim izni verilmedi.");
   }
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await serviceWorkerReady();
   const { key } = await getVapidKey();
   const keyBytes = base64UrlToBytes(key);
   let subscription = await registration.pushManager.getSubscription();
