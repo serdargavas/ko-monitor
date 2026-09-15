@@ -110,3 +110,20 @@ Görev oturum açılışında başlar ve konsol penceresi açmaz (`pythonw.exe`)
 | Durum "Son güncelleme" sürekli eskiyor | Ajan döngüsü durmuş olabilir; görev yeniden başlatılır, `logs\agent.log`'a bak. |
 | `logs\agent.log`'da her dakika "port 8765 kullanımda" | Başka bir KO Monitor (ör. elle başlatılmış) çalışıyor; onu kapat ya da görevi devre dışı bırak. |
 | healthchecks.io'dan yanlış alarm | Oyun kapatılınca kontrol duraklatılır; `[heartbeat] api_key` doğru mu? |
+
+## 9. Arayüzü değiştirmek (geliştirici)
+
+Telefon uygulamasının kaynağı `frontend\` klasöründedir (React + Vite + TypeScript). `web\` klasörü derleme çıktısıdır: elle düzenlenmez, her değişiklikten sonra yeniden derlenip git'e eklenir. Ajanı çalıştırmak için Node.js gerekmez; yalnızca arayüzü değiştirirken gerekir (Node.js 24).
+
+```powershell
+cd frontend
+npm ci            # package-lock.json'daki sürümleri kurar
+npm test          # arayüz testleri (Vitest)
+npm run build     # tip denetimi + derleme → ..\web (önce temizlenir)
+cd ..
+.venv\Scripts\python.exe -m pytest -q tests\test_web.py
+git add frontend web
+```
+
+- `npm run dev`: `http://localhost:5173` adresinde geliştirme sunucusu; `/api` istekleri ve canlı yayın çalışan ajana (`http://127.0.0.1:8765`) yönlendirilir. Service worker ve bildirimler yalnızca derlenmiş sürümde (`http://127.0.0.1:8765`) çalışır.
+- İkonları yeniden üretmek: `.venv\Scripts\python.exe scripts\make_icons.py` (`frontend\public\icons`'a yazar), ardından `npm run build`.
