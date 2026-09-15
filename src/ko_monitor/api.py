@@ -6,10 +6,11 @@ import mimetypes
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ko_monitor.capture import FrameSource
@@ -25,8 +26,16 @@ log = logging.getLogger(__name__)
 
 WEB_DIR = PROJECT_ROOT / "web"
 DAY_S = 86400.0
+SNAPSHOTS_MAX_AGE_S = 7 * DAY_S  # the oldest `since` a client may ask for
 # Host headers the server answers to; anything else (e.g. a DNS-rebinding page) gets 400.
 TRUSTED_HOSTS = ["127.0.0.1", "localhost", "*.ts.net"]
+# Browser push services a subscription endpoint may point at (exact host, or ".suffix").
+PUSH_SERVICE_HOSTS = (
+    "web.push.apple.com",
+    "fcm.googleapis.com",
+    "updates.push.services.mozilla.com",
+    ".notify.windows.com",
+)
 
 # The Windows registry can map .js to text/plain, which browsers refuse for ES modules,
 # and .webmanifest is unknown to Python's defaults.
@@ -40,6 +49,19 @@ for _content_type, _extension in (
     mimetypes.add_type(_content_type, _extension)
 
 
+def is_push_service_url(url: str) -> bool:
+    try:
+        parts = urlsplit(url)
+        hostname = parts.hostname
+    except ValueError:
+        return False
+    if parts.scheme != "https" or not hostname:
+        return False
+    return any(
+        hostname.endswith(known) if known.startswith(".") else hostname == known for known in PUSH_SERVICE_HOSTS
+    )
+
+
 class SubscriptionKeys(BaseModel):
     p256dh: str = Field(min_length=1)
     auth: str = Field(min_length=1)
@@ -48,8 +70,16 @@ class SubscriptionKeys(BaseModel):
 class SubscriptionIn(BaseModel):
     """PushSubscription.toJSON() from the browser; extra fields (expirationTime) are ignored."""
 
-    endpoint: str = Field(pattern=r"^https://")
+    endpoint: str
     keys: SubscriptionKeys
+
+    @field_validator("endpoint")
+    @classmethod
+    def endpoint_is_a_push_service(cls, value: str) -> str:
+        # The server POSTs to this URL: only known push services, never an arbitrary host.
+        if not is_push_service_url(value):
+            raise ValueError("endpoint must be an https URL of a known push service")
+        return value
 
 
 def require_same_origin(request: Request) -> None:
@@ -89,8 +119,10 @@ def create_app(
         return {"server_time": now(), **board.current().to_dict()}
 
     @app.get("/api/snapshots")
-    def get_snapshots(since: float | None = None):
-        start = now() - DAY_S if since is None else since
+    def get_snapshots(since: float | None = Query(None, allow_inf_nan=False)):
+        current = now()
+        # Clamped: an old `since` must not read weeks of rows while holding the storage lock.
+        start = current - DAY_S if since is None else max(since, current - SNAPSHOTS_MAX_AGE_S)
         return [
             {**dataclasses.asdict(s), "state": s.state.value}
             for s in storage.snapshots_since(start)

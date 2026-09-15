@@ -107,9 +107,22 @@ def test_snapshots_default_to_the_last_24_hours(env):
 def test_snapshots_since(env):
     env.storage.add_snapshot(snapshot(NOW - 90_000))
     env.storage.add_snapshot(snapshot(NOW - 60))
-    assert len(env.client.get("/api/snapshots", params={"since": 0}).json()) == 2
+    assert len(env.client.get("/api/snapshots", params={"since": NOW - 100_000}).json()) == 2
     assert env.client.get("/api/snapshots", params={"since": NOW}).json() == []
     assert env.client.get("/api/snapshots", params={"since": "yesterday"}).status_code == 422
+
+
+def test_snapshots_since_is_clamped_to_the_last_7_days(env):
+    week = 7 * 86400
+    for ts in (NOW - week - 3600, NOW - week + 60, NOW - 60):
+        env.storage.add_snapshot(snapshot(ts))
+    body = env.client.get("/api/snapshots", params={"since": 0}).json()
+    assert [s["ts"] for s in body] == [NOW - week + 60, NOW - 60]
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_non_finite_since_is_rejected(env, value):
+    assert env.client.get("/api/snapshots", params={"since": value}).status_code == 422
 
 
 def test_events_newest_first_with_limit(env):
@@ -136,9 +149,30 @@ def test_subscribe_stores_the_browser_subscription(env):
 
 
 @pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://web.push.apple.com/QGx1c2VyLWlk",
+        "https://fcm.googleapis.com/fcm/send/abc:def",
+        "https://updates.push.services.mozilla.com/wpush/v2/gAAAA",
+        "https://wns2-par02p.notify.windows.com/w/?token=BQYAAAB",
+    ],
+)
+def test_known_push_services_are_accepted(env, endpoint):
+    response = env.client.post("/api/push/subscribe", json={**BROWSER_SUBSCRIPTION, "endpoint": endpoint})
+    assert response.status_code == 201
+    assert [s["endpoint"] for s in env.storage.subscriptions()] == [endpoint]
+
+
+@pytest.mark.parametrize(
     "body",
     [
         {**BROWSER_SUBSCRIPTION, "endpoint": "http://insecure.example/push"},
+        {**BROWSER_SUBSCRIPTION, "endpoint": "http://web.push.apple.com/x"},
+        {**BROWSER_SUBSCRIPTION, "endpoint": "https://"},
+        {**BROWSER_SUBSCRIPTION, "endpoint": "https://evil.example/x"},
+        {**BROWSER_SUBSCRIPTION, "endpoint": "https://web.push.apple.com.evil.example/x"},
+        {**BROWSER_SUBSCRIPTION, "endpoint": "https://notify.windows.com/x"},
+        {**BROWSER_SUBSCRIPTION, "endpoint": "https://[::1/x"},
         {"endpoint": "https://web.push.apple.com/x"},
         {**BROWSER_SUBSCRIPTION, "keys": {"p256dh": "", "auth": "a"}},
     ],
