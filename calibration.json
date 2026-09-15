@@ -1,0 +1,13 @@
+{
+  "resolution": [2560, 1440],
+  "hp_roi": [60, 34, 130, 16],
+  "zone_roi": [40, 74, 160, 20],
+  "chat_roi": [1980, 960, 570, 410],
+  "black_threshold": 0.95,
+  "ocr_min_score": 0.8,
+  "chat_phrases": {
+    "inventory_full": []
+  },
+  "templates": {},
+  "inventory": null
+}
