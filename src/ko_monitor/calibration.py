@@ -30,6 +30,17 @@ class InventorySpec:
 
 
 @dataclass(frozen=True)
+class DialogSpec:
+    """Center dialog shared by the death and disconnect notices; its text tells them apart."""
+
+    frame: TemplateSpec
+    text_rois: tuple[Roi, ...]
+    revive_phrases: list[str]
+    disconnect_phrases: list[str]
+    ignore_phrases: list[str]
+
+
+@dataclass(frozen=True)
 class Calibration:
     resolution: tuple[int, int]
     hp_roi: Roi
@@ -40,6 +51,7 @@ class Calibration:
     chat_phrases: dict[str, list[str]]
     templates: dict[str, TemplateSpec]
     inventory: InventorySpec | None
+    dialog: DialogSpec | None = None
 
 
 def load_calibration(path: Path) -> Calibration:
@@ -63,6 +75,20 @@ def load_calibration(path: Path) -> Calibration:
             empty_slot_file=base / inv["empty_slot_file"],
             empty_max_diff=float(inv["empty_max_diff"]),
         )
+
+    def phrases(values: list[str]) -> list[str]:
+        return [p.lower() for p in values]
+
+    dlg = raw.get("dialog")
+    dialog = None
+    if dlg is not None:
+        dialog = DialogSpec(
+            frame=template(dlg["frame"]),
+            text_rois=tuple(tuple(roi) for roi in dlg["text_rois"]),
+            revive_phrases=phrases(dlg.get("revive_phrases", [])),
+            disconnect_phrases=phrases(dlg.get("disconnect_phrases", [])),
+            ignore_phrases=phrases(dlg.get("ignore_phrases", [])),
+        )
     return Calibration(
         resolution=tuple(raw["resolution"]),
         hp_roi=tuple(raw["hp_roi"]),
@@ -73,6 +99,7 @@ def load_calibration(path: Path) -> Calibration:
         chat_phrases={k: [p.lower() for p in v] for k, v in raw.get("chat_phrases", {}).items()},
         templates={k: template(v) for k, v in raw.get("templates", {}).items()},
         inventory=inventory,
+        dialog=dialog,
     )
 
 

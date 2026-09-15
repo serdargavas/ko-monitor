@@ -10,6 +10,7 @@ import numpy as np
 
 from ko_monitor.calibration import Calibration
 from ko_monitor.detectors.chat import ChatTracker, read_chat
+from ko_monitor.detectors.dialog import read_dialog
 from ko_monitor.detectors.frame_diff import FrameDiff
 from ko_monitor.detectors.hud import read_hud
 from ko_monitor.detectors.inventory import read_inventory
@@ -18,6 +19,15 @@ from ko_monitor.models import Readings
 from ko_monitor.ocr import Ocr
 
 log = logging.getLogger(__name__)
+
+
+def _either(a: bool | None, b: bool | None) -> bool | None:
+    """True if either source saw it; None only when both could not tell."""
+    if a or b:
+        return True
+    if a is None and b is None:
+        return None
+    return False
 
 
 class Detector:
@@ -66,14 +76,19 @@ class Detector:
         inventory_open, money, slots_used, slots_total = read_inventory(
             frame, self._calib.inventory, self._ocr
         )
+        # Cheap enough for every tick: one template match, plus <=2 rec-only lines when open.
+        dialog_text, dialog_revive, dialog_disconnect = read_dialog(frame, self._calib.dialog, self._ocr)
         return Readings(
             hud_visible=hud_visible,
             hp=hp,
             hp_max=hp_max,
             zone=zone,
-            revive_dialog=template_present(frame, templates.get("revive_dialog")),
+            revive_dialog=_either(template_present(frame, templates.get("revive_dialog")), dialog_revive),
             login_screen=template_present(frame, templates.get("login_screen")),
-            disconnect_dialog=template_present(frame, templates.get("disconnect_dialog")),
+            disconnect_dialog=_either(
+                template_present(frame, templates.get("disconnect_dialog")), dialog_disconnect
+            ),
+            dialog_text=dialog_text,
             chat_events=self._chat_events(frame, hud_visible),
             inventory_open=inventory_open,
             money=money,

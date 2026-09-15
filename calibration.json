@@ -19,5 +19,12 @@
     "rows": 4,
     "empty_slot_file": "templates/empty_slot.png",
     "empty_max_diff": 12
+  },
+  "dialog": {
+    "frame": {"roi": [1072, 593, 110, 106], "file": "templates/dialog_frame.png", "threshold": 0.8},
+    "text_rois": [[1131, 670, 310, 19], [1131, 685, 310, 22]],
+    "revive_phrases": ["teleport back to the re-spawn"],
+    "disconnect_phrases": ["disconnect", "connection", "server", "bağlantı", "sunucu"],
+    "ignore_phrases": []
   }
 }

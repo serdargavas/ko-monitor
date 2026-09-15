@@ -12,7 +12,9 @@ def test_detect_real_frame(calib, ocr):
     frame = cv2.imread(str(SAMPLES / "normal" / "spike-desktop.png"))
     r = detector.detect(frame)
     assert (r.hud_visible, r.hp, r.hp_max, r.zone) == (True, 9718, 9996, "Ronark Land")
-    assert (r.revive_dialog, r.login_screen, r.disconnect_dialog) == (None, None, None)
+    # dialog is calibrated repo-wide: no dialog on this frame means False, not unknown.
+    assert (r.revive_dialog, r.login_screen, r.disconnect_dialog) == (False, None, False)
+    assert r.dialog_text is None
     # inventory is calibrated repo-wide; this frame just doesn't have the window open.
     assert (r.inventory_open, r.money, r.slots_used, r.slots_total) == (False, None, None, None)
     assert r.chat_events == []
@@ -67,3 +69,28 @@ def test_chat_is_read_at_most_once_per_chat_interval(calib, monkeypatch):
     clock["now"] = 110.0
     assert detector.detect(frame).chat_events == []
     assert len(chat_reads) == 2
+
+
+@pytest.mark.parametrize(
+    "template, dialog, expected",
+    [
+        (None, None, None),
+        (None, False, False),
+        (False, None, False),
+        (False, False, False),
+        (True, False, True),
+        (None, True, True),
+        (False, True, True),
+    ],
+)
+def test_dialog_flags_combine_template_and_dialog_text(calib, monkeypatch, template, dialog, expected):
+    import ko_monitor.detectors as detectors
+
+    monkeypatch.setattr(detectors, "read_hud", lambda frame, calib, ocr: (True, 9000, 9996, "Ronark Land"))
+    monkeypatch.setattr(detectors, "read_inventory", lambda frame, inv, ocr: (None, None, None, None))
+    monkeypatch.setattr(detectors, "read_chat", lambda frame, calib, ocr, tracker: [])
+    monkeypatch.setattr(detectors, "template_present", lambda frame, spec: template)
+    monkeypatch.setattr(detectors, "read_dialog", lambda frame, spec, ocr: ("Some text", dialog, dialog))
+    width, height = calib.resolution
+    r = Detector(calib, None).detect(np.zeros((height, width, 3), np.uint8))
+    assert (r.revive_dialog, r.disconnect_dialog, r.dialog_text) == (expected, expected, "Some text")

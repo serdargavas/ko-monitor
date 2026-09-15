@@ -42,6 +42,7 @@ class Readings:
     revive_dialog: bool | None = None
     login_screen: bool | None = None
     disconnect_dialog: bool | None = None
+    dialog_text: str | None = None  # text of the open center dialog; None = no dialog / not calibrated
     chat_events: list[str] = field(default_factory=list)
     inventory_open: bool | None = None
     money: int | None = None

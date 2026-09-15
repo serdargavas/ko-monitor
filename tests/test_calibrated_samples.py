@@ -1,7 +1,7 @@
 import cv2
 import pytest
 
-from helpers import sample_frames
+from helpers import SAMPLES, sample_frames
 from ko_monitor.calibration import crop
 from ko_monitor.detectors import Detector
 from ko_monitor.detectors.chat import classify, normalize
@@ -22,6 +22,19 @@ def ids(path):
 def test_death_samples(path, calib, ocr):
     r = detect(path, calib, ocr)
     assert r.hp == 0 or r.revive_dialog is True
+
+
+# 20260915-135013.png was saved the moment HP hit 0, before the dialog opened.
+DEATH_DIALOG_FRAMES = [SAMPLES / "death" / name for name in ("20260915-135023.png", "20260915-135029.png")]
+
+
+@pytest.mark.ocr
+@pytest.mark.parametrize("path", DEATH_DIALOG_FRAMES, ids=ids)
+def test_death_dialog_samples(path, calib, ocr):
+    r = detect(path, calib, ocr)
+    assert r.revive_dialog is True
+    assert r.disconnect_dialog is not True
+    assert r.dialog_text is not None and "teleport" in r.dialog_text.lower()
 
 
 @pytest.mark.ocr
@@ -59,3 +72,4 @@ def test_alive_samples_have_no_false_alarms(path, calib, ocr):
     assert r.hud_visible and r.hp > 0
     assert r.revive_dialog is not True
     assert r.login_screen is not True and r.disconnect_dialog is not True
+    assert r.dialog_text is None
