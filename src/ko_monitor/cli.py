@@ -108,6 +108,64 @@ def cmd_detect(args: argparse.Namespace, cfg: Config) -> int:
     return 0
 
 
+def cmd_run(args: argparse.Namespace, cfg: Config) -> int:
+    import threading
+
+    from ko_monitor.agent import Agent, run_replay
+    from ko_monitor.detectors import Detector
+    from ko_monitor.heartbeat import Heartbeat
+    from ko_monitor.logging_setup import setup_logging
+    from ko_monitor.monitor import Monitor
+    from ko_monitor.notifier import WebPushNotifier
+    from ko_monitor.ocr import Ocr
+    from ko_monitor.process_watch import is_process_running
+    from ko_monitor.storage import Storage
+    from ko_monitor.vapid import ensure_vapid_key
+
+    setup_logging(cfg.log_dir)
+    calib = load_calibration(cfg.calibration_path)
+    detector = Detector(calib, Ocr(calib.ocr_min_score))
+
+    if args.replay:
+        db_path = cfg.data_dir / "replay.sqlite3"
+        db_path.unlink(missing_ok=True)
+        storage = Storage(db_path)
+        try:
+            for event in run_replay(cfg, args.replay, detector, storage):
+                print(f"{event['kind']:<15} {event['detail']}")
+        finally:
+            storage.close()
+        return 0
+
+    storage = Storage(cfg.data_dir / "ko_monitor.sqlite3")
+    notifier = WebPushNotifier(
+        storage, ensure_vapid_key(cfg.data_dir / "vapid_private.pem"),
+        cfg.push.contact, cfg.push.max_age_s,
+    )
+    source = WgcCapture(cfg.window_title, calib.black_threshold)
+    agent = Agent(
+        cfg, storage, source, detector, Monitor(cfg.thresholds), notifier,
+        Heartbeat(cfg.heartbeat.ping_url, cfg.heartbeat.api_key),
+        lambda: is_process_running(cfg.process_name),
+    )
+    stop = threading.Event()
+    try:
+        agent.run(stop)
+    except KeyboardInterrupt:
+        stop.set()
+    finally:
+        source.close()
+        storage.close()
+    return 0
+
+
+def cmd_vapid(args: argparse.Namespace, cfg: Config) -> int:
+    from ko_monitor.vapid import application_server_key, ensure_vapid_key
+
+    print(application_server_key(ensure_vapid_key(cfg.data_dir / "vapid_private.pem")))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ko_monitor")
     parser.add_argument("--config", type=Path, default=Path("config.toml"))
@@ -137,6 +195,13 @@ def build_parser() -> argparse.ArgumentParser:
     detect = sub.add_parser("detect", help="print Readings for images using calibration.json")
     detect.add_argument("images", type=Path, nargs="+")
     detect.set_defaults(func=cmd_detect)
+
+    run = sub.add_parser("run", help="run the monitor (live, or --replay a folder of frames)")
+    run.add_argument("--replay", type=Path)
+    run.set_defaults(func=cmd_run)
+
+    vapid = sub.add_parser("vapid", help="create the VAPID key if needed and print the public key")
+    vapid.set_defaults(func=cmd_vapid)
     return parser
 
 
