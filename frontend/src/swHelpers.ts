@@ -55,7 +55,21 @@ export function notificationOptions(message: PushMessage): { title: string; opti
 /** Absolute URL a tapped notification opens (notification.data.url, else the events screen). */
 export function notificationTarget(data: unknown, origin: string): string {
   const url = data && typeof data === "object" && "url" in data ? (data as { url: unknown }).url : null;
-  return new URL(typeof url === "string" && url ? url : DEFAULT_URL, origin).href;
+  const resolved = new URL(typeof url === "string" && url ? url : DEFAULT_URL, origin);
+  // A push payload is never fully trusted: never let it send the client to a foreign origin
+  // (an absolute URL, or a protocol-relative "//host/..." one).
+  if (resolved.origin !== origin) return new URL(DEFAULT_URL, origin).href;
+  return resolved.href;
+}
+
+/**
+ * A hashed build asset (/assets/index-*.js, *.css, ...) already lives forever in the Workbox
+ * precache under its own revisioned key; copying it into the runtime cache too would leave a
+ * stale, never-evicted entry behind on every single build. getCacheKeyForURL (from
+ * workbox-precaching) returns a key only for URLs the current build's precache manifest lists.
+ */
+export function shouldCacheAtRuntime(url: string, getCacheKeyForURL: (url: string) => string | undefined): boolean {
+  return getCacheKeyForURL(url) === undefined;
 }
 
 /** Cache names to delete on activate: everything this worker version does not use (e.g. "ko-monitor-v4"). */

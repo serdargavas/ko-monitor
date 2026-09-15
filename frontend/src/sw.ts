@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { cacheNames, clientsClaim } from "workbox-core";
-import { matchPrecache, precache } from "workbox-precaching";
+import { getCacheKeyForURL, matchPrecache, precache } from "workbox-precaching";
 import {
   classifyRequest,
   NETWORK_TIMEOUT_MS,
@@ -8,6 +8,7 @@ import {
   notificationTarget,
   parsePushPayload,
   RUNTIME_CACHE,
+  shouldCacheAtRuntime,
   staleCaches,
 } from "./swHelpers";
 
@@ -32,12 +33,14 @@ function timeout(ms: number): Promise<never> {
 }
 
 async function cachedCopy(request: Request): Promise<Response | undefined> {
-  return (await caches.match(request, { cacheName: RUNTIME_CACHE })) ?? (await matchPrecache(request.url));
+  // The current build's precache always wins: a slow launch must serve today's bundle, not a
+  // runtime-cached copy left over from a previous visit's build.
+  return (await matchPrecache(request.url)) ?? (await caches.match(request, { cacheName: RUNTIME_CACHE }));
 }
 
 async function networkFirst(request: Request, navigate: boolean): Promise<Response> {
   const network = fetch(request).then((response) => {
-    if (response.ok) {
+    if (response.ok && shouldCacheAtRuntime(request.url, getCacheKeyForURL)) {
       const copy = response.clone();
       void caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
     }
