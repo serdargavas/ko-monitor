@@ -1,11 +1,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { installReloadOnControllerChange } from "./swReload";
 import "./styles.css";
 
 if ("serviceWorker" in navigator) {
   if (import.meta.env.PROD) {
     // Built by vite-plugin-pwa from src/sw.ts; the dev server has no worker.
+    installReloadOnControllerChange(navigator.serviceWorker, window);
     navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((error: unknown) => {
       console.error("service worker:", error);
     });
