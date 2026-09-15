@@ -30,15 +30,21 @@ def read_inventory(
     empty = load_template(str(spec.empty_slot_file))
     if empty is None:
         return True, money, None, None
-    used = 0
     width, height = spec.slot_size
+    frame_h, frame_w = frame.shape[:2]
+    cells = []
     for row in range(spec.rows):
         for col in range(spec.cols):
             x = spec.slot_origin[0] + col * spec.slot_step[0]
             y = spec.slot_origin[1] + row * spec.slot_step[1]
-            cell = frame[y : y + height, x : x + width]
-            if cell.shape[:2] != empty.shape[:2]:
-                cell = cv2.resize(cell, (empty.shape[1], empty.shape[0]))
-            if float(cv2.absdiff(cell, empty).mean()) > spec.empty_max_diff:
-                used += 1
+            if x < 0 or y < 0 or x + width > frame_w or y + height > frame_h:
+                return True, money, None, None
+            cells.append((x, y))
+    used = 0
+    for x, y in cells:
+        cell = crop(frame, (x, y, width, height))
+        if cell.shape[:2] != empty.shape[:2]:
+            cell = cv2.resize(cell, (empty.shape[1], empty.shape[0]))
+        if float(cv2.absdiff(cell, empty).mean()) > spec.empty_max_diff:
+            used += 1
     return True, money, used, spec.cols * spec.rows

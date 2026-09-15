@@ -1,3 +1,4 @@
+import dataclasses
 from pathlib import Path
 
 import cv2
@@ -62,3 +63,9 @@ def test_open_window_reads_money_and_slots(tmp_path: Path):
 def test_open_window_unreadable_money(tmp_path: Path):
     frame, spec = build(tmp_path)
     assert read_inventory(frame, spec, FakeOcr(None)) == (True, None, 1, 4)
+
+
+def test_slot_grid_off_frame_is_unknown(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    spec = dataclasses.replace(spec, slot_origin=(390, 100))
+    assert read_inventory(frame, spec, FakeOcr("1,500,000")) == (True, 1500000, None, None)
