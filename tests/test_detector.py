@@ -4,6 +4,7 @@ import pytest
 
 from helpers import SAMPLES
 from ko_monitor.detectors import Detector
+from ko_monitor.detectors.dialog import DialogCache
 
 
 @pytest.mark.ocr
@@ -113,7 +114,12 @@ def test_dialog_flags_combine_template_and_dialog_text(calib, monkeypatch, templ
     monkeypatch.setattr(detectors, "read_inventory", lambda frame, inv, ocr: (None, None, None, None))
     monkeypatch.setattr(detectors, "read_chat", lambda frame, calib, ocr, tracker: [])
     monkeypatch.setattr(detectors, "template_present", lambda frame, spec: template)
-    monkeypatch.setattr(detectors, "read_dialog", lambda frame, spec, ocr: ("Some text", dialog, dialog))
+    def fake_read_dialog(frame, spec, ocr, cache):
+        # The detector must pass its per-stream cache so a static dialog skips OCR.
+        assert isinstance(cache, DialogCache)
+        return "Some text", dialog, dialog
+
+    monkeypatch.setattr(detectors, "read_dialog", fake_read_dialog)
     width, height = calib.resolution
     r = Detector(calib, None).detect(np.zeros((height, width, 3), np.uint8))
     assert (r.revive_dialog, r.disconnect_dialog, r.dialog_text) == (expected, expected, "Some text")

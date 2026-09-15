@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 from ko_monitor.calibration import DialogSpec, TemplateSpec
-from ko_monitor.detectors.dialog import read_dialog
+from ko_monitor.detectors.dialog import DialogCache, read_dialog
 
 
 class FakeOcr:
@@ -129,6 +129,61 @@ def test_disconnect_phrase_in_line_one_is_disconnect(tmp_path: Path):
     frame, spec = build(tmp_path)
     ocr = FakeOcr(["Lost the server", "Guard"])
     assert read_dialog(frame, spec, ocr) == ("Lost the server Guard", False, True)
+
+
+class CountingOcr:
+    def __init__(self, text: str):
+        self.text = text
+        self.calls = 0
+
+    def read_line(self, image):
+        self.calls += 1
+        return self.text, 0.99
+
+
+def test_static_dialog_skips_ocr(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    ocr = CountingOcr("Server lost")
+    cache = DialogCache()
+    first = read_dialog(frame, spec, ocr, cache)
+    assert first == ("Server lost Server lost", False, True)
+    assert ocr.calls == 2
+    assert read_dialog(frame.copy(), spec, ocr, cache) == first
+    assert ocr.calls == 2
+
+
+def test_changed_text_pixels_run_ocr_again(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    ocr = CountingOcr("Something")
+    cache = DialogCache()
+    read_dialog(frame, spec, ocr, cache)
+    changed = frame.copy()
+    changed[125, 60] = changed[125, 60] ^ 0xFF  # inside the second text ROI
+    ocr.text = "Server down"
+    assert read_dialog(changed, spec, ocr, cache) == ("Server down Server down", False, True)
+    assert ocr.calls == 4
+
+
+def test_dialog_gone_resets_the_cache(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    without_frame, _ = build(tmp_path, with_frame=False)
+    # Same text pixels in both frames: only the dialog frame ornament differs.
+    without_frame[100:140] = frame[100:140]
+    ocr = CountingOcr("Something")
+    cache = DialogCache()
+    read_dialog(frame, spec, ocr, cache)
+    assert read_dialog(without_frame, spec, ocr, cache) == (None, False, False)
+    assert ocr.calls == 2
+    read_dialog(frame, spec, ocr, cache)
+    assert ocr.calls == 4
+
+
+def test_without_cache_ocr_runs_every_time(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    ocr = CountingOcr("Something")
+    read_dialog(frame, spec, ocr)
+    read_dialog(frame, spec, ocr)
+    assert ocr.calls == 4
 
 
 def test_revive_phrase_still_matches_as_substring_after_folding(tmp_path: Path):

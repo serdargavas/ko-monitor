@@ -23,9 +23,24 @@ def _has_word_phrase(folded_text: str, phrase: str) -> bool:
     return re.search(pattern, folded_text) is not None
 
 
+DialogResult = tuple[str | None, bool | None, bool | None]
+
+
+class DialogCache:
+    """Last OCR result of an open dialog, keyed by the raw pixels of its text ROIs."""
+
+    def __init__(self) -> None:
+        self.key: tuple[bytes, ...] | None = None
+        self.result: DialogResult | None = None
+
+    def clear(self) -> None:
+        self.key = None
+        self.result = None
+
+
 def read_dialog(
-    frame: np.ndarray, spec: DialogSpec | None, ocr
-) -> tuple[str | None, bool | None, bool | None]:
+    frame: np.ndarray, spec: DialogSpec | None, ocr, cache: DialogCache | None = None
+) -> DialogResult:
     """Returns (dialog_text, revive, disconnect) for the center dialog.
 
     Death and disconnect notices share the same dialog window, so the frame template only
@@ -34,18 +49,32 @@ def read_dialog(
     generic words) must match whole words and only in the first text line (lower lines often
     carry a nameplate); the long revive phrase and ignore phrases match the joined text as a
     substring.
+
+    With a cache, OCR is skipped while the text ROI pixels are identical to the previous
+    read of the still-open dialog; the cache is cleared when the dialog is not seen.
     """
     if spec is None:
         return None, None, None
     present = template_present(frame, spec.frame)
-    if present is None:
-        return None, None, None
     if not present:
-        return None, False, False
+        if cache is not None:
+            cache.clear()
+        return (None, None, None) if present is None else (None, False, False)
 
+    crops = [crop(frame, roi) for roi in spec.text_rois]
+    key = tuple(part.tobytes() for part in crops)
+    if cache is not None and cache.key == key:
+        return cache.result
+    result = _classify(crops, spec, ocr)
+    if cache is not None:
+        cache.key, cache.result = key, result
+    return result
+
+
+def _classify(crops: list[np.ndarray], spec: DialogSpec, ocr) -> DialogResult:
     lines = []
-    for roi in spec.text_rois:
-        line = ocr.read_line(crop(frame, roi))
+    for part in crops:
+        line = ocr.read_line(part)
         lines.append(line[0].strip() if line is not None else "")
     text = " ".join(part for part in lines if part)
     folded = fold(text)

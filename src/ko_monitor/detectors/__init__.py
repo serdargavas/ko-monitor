@@ -10,7 +10,7 @@ import numpy as np
 
 from ko_monitor.calibration import Calibration
 from ko_monitor.detectors.chat import ChatTracker, read_chat
-from ko_monitor.detectors.dialog import read_dialog
+from ko_monitor.detectors.dialog import DialogCache, read_dialog
 from ko_monitor.detectors.frame_diff import FrameDiff
 from ko_monitor.detectors.hud import read_hud
 from ko_monitor.detectors.inventory import read_inventory
@@ -51,6 +51,7 @@ class Detector:
         self._last_chat_read: float | None = None
         self._mismatched_size: tuple[int, int] | None = None
         self._dialog_text_last: str | None = None
+        self._dialog_cache = DialogCache()
 
     def _log_dialog_text(self, text: str | None) -> None:
         """Logs every change of the center dialog text: the first real disconnect text teaches us."""
@@ -86,8 +87,11 @@ class Detector:
         inventory_open, money, slots_used, slots_total = read_inventory(
             frame, self._calib.inventory, self._ocr
         )
-        # Cheap enough for every tick: one template match, plus <=2 rec-only lines when open.
-        dialog_text, dialog_revive, dialog_disconnect = read_dialog(frame, self._calib.dialog, self._ocr)
+        # One template match per tick; the rec-only OCR of the text lines runs only while the
+        # dialog frame is present, and is skipped while the text pixels are unchanged.
+        dialog_text, dialog_revive, dialog_disconnect = read_dialog(
+            frame, self._calib.dialog, self._ocr, self._dialog_cache
+        )
         self._log_dialog_text(dialog_text)
         return Readings(
             hud_visible=hud_visible,
