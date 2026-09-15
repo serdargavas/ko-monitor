@@ -17,6 +17,7 @@ from ko_monitor.models import Event, EventKind
 from ko_monitor.notifier import Notifier
 from ko_monitor.status import StatusBoard
 from ko_monitor.storage import Storage
+from ko_monitor.stream import stream_router
 
 log = logging.getLogger(__name__)
 
@@ -101,6 +102,8 @@ def create_app(
         count = len(storage.subscriptions())
         delivered = notifier.send(Event(EventKind.TEST, now(), "Bildirimler çalışıyor", notify=True))
         return {"delivered": delivered, "subscriptions": count}
+
+    app.include_router(stream_router(source, stream_quality))
 
     # Keep the static mount last: routes registered before it take precedence.
     # check_dir=False lets the API start before web/ exists (Task 5 creates it).
