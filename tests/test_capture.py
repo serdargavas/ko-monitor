@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
-from ko_monitor.capture import ReplaySource, is_black
+from ko_monitor.capture import ReplaySource, WgcCapture, is_black
 from ko_monitor.models import CaptureStatus
 
 
@@ -37,3 +37,162 @@ def test_replay_marks_black_frames(tmp_path: Path):
 def test_replay_requires_frames(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         ReplaySource(tmp_path)
+
+
+class FakeControl:
+    """Stand-in for windows_capture's control object."""
+
+    def __init__(self, finished: bool = False):
+        self._finished = finished
+
+    def is_finished(self) -> bool:
+        return self._finished
+
+    def stop(self) -> None:
+        self._finished = True
+
+
+class FakeClock:
+    """A controllable stand-in for time.monotonic."""
+
+    def __init__(self, t: float = 0.0):
+        self.t = t
+
+    def __call__(self) -> float:
+        return self.t
+
+
+def test_wgc_window_not_found_returns_status_without_starting(monkeypatch):
+    monkeypatch.setattr("ko_monitor.capture.find_window", lambda title: 0)
+    cap = WgcCapture("Knight Evolution")
+    starts = []
+    monkeypatch.setattr(cap, "_start", lambda: starts.append(1))
+
+    status, frame = cap.latest()
+
+    assert (status, frame) == (CaptureStatus.NOT_FOUND, None)
+    assert starts == []
+
+
+def test_wgc_minimized_returns_status_without_starting(monkeypatch):
+    monkeypatch.setattr("ko_monitor.capture.find_window", lambda title: 1234)
+    monkeypatch.setattr("ko_monitor.capture.is_minimized", lambda hwnd: True)
+    cap = WgcCapture("Knight Evolution")
+    starts = []
+    monkeypatch.setattr(cap, "_start", lambda: starts.append(1))
+
+    status, frame = cap.latest()
+
+    assert (status, frame) == (CaptureStatus.MINIMIZED, None)
+    assert starts == []
+
+
+def test_wgc_backoff_grows_when_session_dies_immediately(monkeypatch):
+    monkeypatch.setattr("ko_monitor.capture.find_window", lambda title: 1234)
+    monkeypatch.setattr("ko_monitor.capture.is_minimized", lambda hwnd: False)
+    clock = FakeClock(0.0)
+    monkeypatch.setattr("ko_monitor.capture.time.monotonic", clock)
+
+    cap = WgcCapture("Knight Evolution")
+    starts: list[float] = []
+
+    def fake_start():
+        starts.append(clock.t)
+        cap._control = FakeControl(finished=True)  # session dies right away, no frame
+
+    monkeypatch.setattr(cap, "_start", fake_start)
+
+    clock.t = 0.0
+    assert cap.latest() == (CaptureStatus.NOT_FOUND, None)
+    assert starts == [0.0]
+
+    clock.t = 0.5
+    cap.latest()
+    assert starts == [0.0]  # still waiting out the 1s backoff
+
+    clock.t = 1.0
+    cap.latest()
+    assert starts == [0.0, 1.0]  # first retry after 1s
+
+    clock.t = 2.5
+    cap.latest()
+    assert starts == [0.0, 1.0]  # still waiting out the 2s backoff
+
+    clock.t = 3.0
+    cap.latest()
+    assert starts == [0.0, 1.0, 3.0]  # second retry after 2s more
+
+
+def test_wgc_backoff_grows_when_start_raises(monkeypatch):
+    monkeypatch.setattr("ko_monitor.capture.find_window", lambda title: 1234)
+    monkeypatch.setattr("ko_monitor.capture.is_minimized", lambda hwnd: False)
+    clock = FakeClock(0.0)
+    monkeypatch.setattr("ko_monitor.capture.time.monotonic", clock)
+
+    cap = WgcCapture("Knight Evolution")
+    starts: list[float] = []
+
+    def fake_start():
+        starts.append(clock.t)
+        raise RuntimeError("capture session could not start")
+
+    monkeypatch.setattr(cap, "_start", fake_start)
+
+    clock.t = 0.0
+    assert cap.latest() == (CaptureStatus.NOT_FOUND, None)
+    assert starts == [0.0]
+    assert cap._control is None
+
+    clock.t = 0.5
+    cap.latest()
+    assert starts == [0.0]
+
+    clock.t = 1.0
+    cap.latest()
+    assert starts == [0.0, 1.0]
+
+    clock.t = 2.5
+    cap.latest()
+    assert starts == [0.0, 1.0]
+
+    clock.t = 3.0
+    cap.latest()
+    assert starts == [0.0, 1.0, 3.0]
+
+
+def test_wgc_backoff_resets_after_a_frame_then_grows_again(monkeypatch):
+    monkeypatch.setattr("ko_monitor.capture.find_window", lambda title: 1234)
+    monkeypatch.setattr("ko_monitor.capture.is_minimized", lambda hwnd: False)
+    clock = FakeClock(0.0)
+    monkeypatch.setattr("ko_monitor.capture.time.monotonic", clock)
+
+    cap = WgcCapture("Knight Evolution")
+    starts: list[float] = []
+    frame = np.full((4, 4, 3), 200, np.uint8)
+
+    def fake_start():
+        starts.append(clock.t)
+        cap._control = FakeControl(finished=False)
+        with cap._lock:
+            cap._frame = frame
+
+    monkeypatch.setattr(cap, "_start", fake_start)
+
+    clock.t = 0.0
+    status, got = cap.latest()
+    assert status == CaptureStatus.OK
+    assert got is not None and got[0, 0, 0] == 200
+    assert starts == [0.0]
+    assert cap._backoff == 1.0  # reset once a frame arrives
+
+    # The session dies; because backoff was reset, the next retry is 1s out,
+    # not the larger value it would have grown to without the reset.
+    cap._control.stop()
+
+    clock.t = 0.5
+    assert cap.latest() == (CaptureStatus.NOT_FOUND, None)
+    assert starts == [0.0]  # still within the 1s wait
+
+    clock.t = 1.0
+    cap.latest()
+    assert starts == [0.0, 1.0]  # retried after exactly 1s

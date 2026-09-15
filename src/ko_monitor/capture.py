@@ -110,19 +110,22 @@ class WgcCapture:
             now = time.monotonic()
             if now < self._retry_at:
                 return CaptureStatus.NOT_FOUND, None
+            # Reserve the next retry slot before attempting, so a session that
+            # dies right after starting (protected content, driver error, ...)
+            # still backs off instead of retrying every call.
+            self._retry_at = now + self._backoff
+            self._backoff = min(self._backoff * 2, 30.0)
             try:
                 self._start()
-                self._backoff = 1.0
             except Exception:
                 log.exception("capture start failed; retrying in %.0fs", self._backoff)
                 self._control = None
-                self._retry_at = now + self._backoff
-                self._backoff = min(self._backoff * 2, 30.0)
                 return CaptureStatus.NOT_FOUND, None
         with self._lock:
             frame = self._frame
         if frame is None:
             return CaptureStatus.NOT_FOUND, None
+        self._backoff = 1.0
         status = CaptureStatus.BLACK if is_black(frame, self._black_threshold) else CaptureStatus.OK
         return status, frame
 
