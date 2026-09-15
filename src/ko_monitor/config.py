@@ -15,6 +15,7 @@ class Thresholds:
     frozen_s: float = 120.0
     blind_s: float = 60.0
     startup_grace_s: float = 300.0
+    unknown_dialog_s: float = 30.0
     inventory_full_repeat_s: float = 600.0
     frozen_diff_max: float = 0.5
     snapshot_retention_s: float = 30 * 86400

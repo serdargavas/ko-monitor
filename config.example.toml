@@ -16,6 +16,7 @@ disconnect_soft_s = 15.0       # HUD missing this long -> disconnected
 frozen_s = 120.0               # no picture change this long -> frozen
 blind_s = 60.0                 # capture unusable this long -> blind
 startup_grace_s = 300.0        # after launch, no dead/disconnect/frozen/blind until the HUD is first seen (at most this long)
+unknown_dialog_s = 30.0        # center dialog with unrecognised text open this long while alive -> disconnected
 inventory_full_repeat_s = 600.0
 frozen_diff_max = 0.5          # mean abs diff (0-255) of 64x36 gray frames counted as "no change"
 snapshot_retention_s = 2592000 # 30 days

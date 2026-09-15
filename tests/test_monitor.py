@@ -235,3 +235,109 @@ def test_snapshot_when_closed():
     monitor.observe(Observation(0, False))
     snap = monitor.snapshot(1)
     assert (snap.state, snap.hp) == (State.CLOSED, None)
+
+
+NOTICE = "Unexpected notice from the game"
+
+
+def test_unknown_dialog_while_alive_disconnects_after_30s(m):
+    assert m.observe(ok(2, dialog_text=NOTICE)) == []
+    for ts in range(4, 32, 2):
+        assert m.observe(ok(ts, dialog_text=NOTICE)) == [], ts
+    assert m.observe(ok(31, dialog_text=NOTICE)) == []
+    events = m.observe(ok(32, dialog_text=NOTICE))
+    assert kinds(events) == [(EventKind.DISCONNECTED, True)]
+    assert events[0].detail == NOTICE
+    assert m.observe(ok(34, dialog_text=NOTICE)) == []
+    events = m.observe(ok(36))
+    assert kinds(events) == [(EventKind.RECOVERED, False)]
+    assert events[0].detail == "disconnected"
+
+
+def test_unknown_dialog_detail_is_truncated(m):
+    text = "x" * 300
+    m.observe(ok(2, dialog_text=text))
+    events = m.observe(ok(32, dialog_text=text))
+    assert kinds(events) == [(EventKind.DISCONNECTED, True)]
+    assert events[0].detail == "x" * 120
+
+
+def test_unknown_dialog_timer_needs_living_character(m):
+    assert m.observe(ok(2, hp=None, dialog_text=NOTICE)) == []
+    assert m.observe(ok(40, hp=None, dialog_text=NOTICE)) == []
+    assert m.state == State.ALIVE
+    assert m.observe(ok(42, dialog_text=NOTICE)) == []
+    assert m.observe(ok(71, dialog_text=NOTICE)) == []
+    assert kinds(m.observe(ok(72, dialog_text=NOTICE))) == [(EventKind.DISCONNECTED, True)]
+
+
+def test_disconnect_dialog_text_needs_two_reads_and_names_the_text(m):
+    text = "Disconnected from server"
+    assert m.observe(ok(2, dialog_text=text, disconnect_dialog=True)) == []
+    events = m.observe(ok(4, dialog_text=text, disconnect_dialog=True))
+    assert kinds(events) == [(EventKind.DISCONNECTED, True)]
+    assert events[0].detail == text
+
+
+def test_dialog_disconnect_holds_while_dialog_open(m):
+    text = "Disconnected from server"
+    m.observe(ok(2, dialog_text=text, disconnect_dialog=True))
+    assert kinds(m.observe(ok(4, dialog_text=text, disconnect_dialog=True))) == [(EventKind.DISCONNECTED, True)]
+    # HUD stays visible behind the dialog; a garbled read must not fake a recovery.
+    assert m.observe(ok(6, dialog_text="Disc0nn3ct3d")) == []
+    assert m.observe(ok(8, dialog_text="")) == []
+    assert m.state == State.DISCONNECTED
+    # Dialog closed but HUD not readable yet: still disconnected.
+    assert m.observe(ok(10, **NO_HUD)) == []
+    assert m.state == State.DISCONNECTED
+    events = m.observe(ok(12))
+    assert kinds(events) == [(EventKind.RECOVERED, False)]
+
+
+def test_revive_dialog_is_death_not_unknown_dialog(m):
+    text = "Press OK to teleport back to the re-spawn point."
+    m.observe(ok(2, hp=0, dialog_text=text, revive_dialog=True))
+    events = m.observe(ok(4, hp=0, dialog_text=text, revive_dialog=True))
+    assert kinds(events) == [(EventKind.DEAD, True)]
+    assert events[0].detail == "Ronark Land"
+    for ts in range(6, 80, 2):
+        assert m.observe(ok(ts, hp=0, dialog_text=text, revive_dialog=True)) == [], ts
+    assert m.state == State.DEAD
+
+
+def test_revive_dialog_with_hp_left_starts_no_unknown_dialog_timer(m):
+    text = "Press OK to teleport back to the re-spawn point."
+    m.observe(ok(2, dialog_text=text, revive_dialog=True))
+    assert kinds(m.observe(ok(4, dialog_text=text, revive_dialog=True))) == [(EventKind.DEAD, True)]
+    assert m.observe(ok(40, dialog_text=text, revive_dialog=True)) == []
+    assert m.state == State.DEAD
+
+
+def test_unknown_dialog_during_startup_grace_is_silent():
+    monitor = Monitor(T)
+    assert kinds(monitor.observe(ok(0, hud_visible=False, dialog_text=NOTICE))) == [(EventKind.GAME_STARTED, False)]
+    for ts in range(2, 62, 2):
+        assert monitor.observe(ok(ts, hud_visible=False, dialog_text=NOTICE)) == [], ts
+    # HUD seen: grace ends and the unknown-dialog timer starts from this moment.
+    assert monitor.observe(ok(62, dialog_text=NOTICE)) == []
+    assert monitor.observe(ok(91, dialog_text=NOTICE)) == []
+    assert kinds(monitor.observe(ok(92, dialog_text=NOTICE))) == [(EventKind.DISCONNECTED, True)]
+
+
+def test_blind_gap_restarts_unknown_dialog_timer(m):
+    assert m.observe(ok(2, dialog_text=NOTICE)) == []
+    for ts in range(4, 22, 2):
+        assert m.observe(Observation(ts, True, CaptureStatus.MINIMIZED)) == [], ts
+    assert m.observe(ok(22, dialog_text=NOTICE)) == []
+    assert m.observe(ok(51, dialog_text=NOTICE)) == []
+    assert kinds(m.observe(ok(52, dialog_text=NOTICE))) == [(EventKind.DISCONNECTED, True)]
+
+
+def test_blind_gap_does_not_fake_recovery_from_dialog_disconnect(m):
+    m.observe(ok(2, dialog_text=NOTICE))
+    assert kinds(m.observe(ok(32, dialog_text=NOTICE))) == [(EventKind.DISCONNECTED, True)]
+    assert m.observe(Observation(34, True, CaptureStatus.BLACK)) == []
+    assert m.observe(ok(36, dialog_text=NOTICE)) == []
+    assert m.observe(ok(40, dialog_text=NOTICE)) == []
+    assert m.state == State.DISCONNECTED
+    assert kinds(m.observe(ok(42))) == [(EventKind.RECOVERED, False)]

@@ -12,6 +12,8 @@ _BAD_EVENTS = {
     State.BLIND: EventKind.BLIND,
 }
 
+_DETAIL_MAX = 120
+
 
 @dataclass(frozen=True)
 class Observation:
@@ -41,12 +43,17 @@ class Monitor:
 
     def _reset_conditions(self) -> None:
         self.last_readings: Readings | None = None
+        self._dialog_text_last: str | None = None
+        # The current DISCONNECTED state was caused by the center dialog (disconnect text or
+        # unknown text): leaving it needs the dialog closed and the HUD visible.
+        self._disconnect_by_dialog = False
         self._clear_timers()
 
     def _clear_timers(self) -> None:
         self._blind_since: float | None = None
         self._hud_missing_since: float | None = None
         self._still_since: float | None = None
+        self._unknown_dialog_since: float | None = None
         self._dead_reads = 0
         self._disconnect_reads = 0
 
@@ -83,6 +90,7 @@ class Monitor:
             # already current is kept: leaving that state needs a positive reading.
             if self.state != State.DISCONNECTED:
                 self._hud_missing_since = None
+                self._unknown_dialog_since = None
             if self.state != State.FROZEN:
                 self._still_since = None
 
@@ -90,20 +98,26 @@ class Monitor:
             self._clear_timers()
             return events
 
-        target = self._target_state(obs.ts)
+        target, by_dialog = self._target_state(obs.ts)
+        self._disconnect_by_dialog = by_dialog
         if target != self.state:
             previous = self.state
             self.state = target
             if target == State.ALIVE:
                 events.append(Event(EventKind.RECOVERED, obs.ts, previous.value))
             else:
-                events.append(Event(_BAD_EVENTS[target], obs.ts, self.zone_last or "", notify=True))
+                detail = self.zone_last or ""
+                if by_dialog and self._dialog_text_last is not None:
+                    detail = self._dialog_text_last[:_DETAIL_MAX]
+                events.append(Event(_BAD_EVENTS[target], obs.ts, detail, notify=True))
         return events
 
     def _update(self, ts: float, r: Readings) -> None:
         self.last_readings = r
         if r.zone:
             self.zone_last = r.zone
+        if r.dialog_text is not None:
+            self._dialog_text_last = r.dialog_text
 
         if r.hp == 0 or r.revive_dialog:
             self._dead_reads += 1
@@ -112,8 +126,14 @@ class Monitor:
 
         if r.login_screen or r.disconnect_dialog:
             self._disconnect_reads += 1
-        elif r.hud_visible:
+        elif r.hud_visible and r.dialog_text is None:
+            # The HUD stays visible behind a disconnect dialog: only a closed dialog resets.
             self._disconnect_reads = 0
+
+        if r.dialog_text is None or r.revive_dialog or r.disconnect_dialog or r.hp == 0:
+            self._unknown_dialog_since = None
+        elif r.hp is not None and r.hp > 0 and self._unknown_dialog_since is None:
+            self._unknown_dialog_since = ts
 
         if r.hud_visible:
             self._hud_missing_since = None
@@ -145,23 +165,45 @@ class Monitor:
         self._last_inventory_alert = ts
         return [Event(EventKind.INVENTORY_FULL, ts, self.zone_last or "", notify=True)]
 
-    def _target_state(self, ts: float) -> State:
+    def _disconnect_cause(self, ts: float) -> str | None:
+        """'dialog' (center dialog text), 'other' (login screen, template, HUD missing) or None."""
         t = self._t
-        if self._blind_since is not None:
-            return State.BLIND if ts - self._blind_since >= t.blind_s else self.state
+        if self._unknown_dialog_since is not None and ts - self._unknown_dialog_since >= t.unknown_dialog_s:
+            return "dialog"
         if self._disconnect_reads >= t.confirm_reads:
-            return State.DISCONNECTED
+            r = self.last_readings
+            by_text = r is not None and bool(r.disconnect_dialog) and r.dialog_text is not None
+            return "dialog" if by_text else "other"
         if self._hud_missing_since is not None and ts - self._hud_missing_since >= t.disconnect_soft_s:
-            return State.DISCONNECTED
+            return "other"
+        return None
+
+    def _dialog_closed(self) -> bool:
+        r = self.last_readings
+        return r is not None and r.dialog_text is None and r.hud_visible
+
+    def _target_state(self, ts: float) -> tuple[State, bool]:
+        """Returns (target state, whether a DISCONNECTED target is caused by the center dialog)."""
+        t = self._t
+        held_by_dialog = self.state == State.DISCONNECTED and self._disconnect_by_dialog
+        if self._blind_since is not None:
+            if ts - self._blind_since >= t.blind_s:
+                return State.BLIND, False
+            return self.state, held_by_dialog
+        cause = self._disconnect_cause(ts)
+        if cause is not None:
+            return State.DISCONNECTED, cause == "dialog" or held_by_dialog
+        if held_by_dialog and not self._dialog_closed():
+            return State.DISCONNECTED, True
         if self._dead_reads >= t.confirm_reads:
-            return State.DEAD
+            return State.DEAD, False
         if (
             self.state in (State.ALIVE, State.FROZEN)
             and self._still_since is not None
             and ts - self._still_since >= t.frozen_s
         ):
-            return State.FROZEN
-        return State.ALIVE
+            return State.FROZEN, False
+        return State.ALIVE, False
 
     def snapshot(self, ts: float) -> Snapshot:
         r = self.last_readings
