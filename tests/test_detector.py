@@ -13,7 +13,8 @@ def test_detect_real_frame(calib, ocr):
     r = detector.detect(frame)
     assert (r.hud_visible, r.hp, r.hp_max, r.zone) == (True, 9718, 9996, "Ronark Land")
     assert (r.revive_dialog, r.login_screen, r.disconnect_dialog) == (None, None, None)
-    assert (r.inventory_open, r.money, r.slots_used, r.slots_total) == (None, None, None, None)
+    # inventory is calibrated repo-wide; this frame just doesn't have the window open.
+    assert (r.inventory_open, r.money, r.slots_used, r.slots_total) == (False, None, None, None)
     assert r.chat_events == []
     assert r.frame_diff is None
     assert detector.detect(frame).frame_diff == 0.0

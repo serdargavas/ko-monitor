@@ -10,7 +10,8 @@ def test_repo_calibration_loads(calib):
     assert calib.resolution == (2560, 1440)
     assert calib.hp_roi == (60, 34, 130, 16)
     assert calib.templates == {}
-    assert calib.inventory is None
+    assert calib.inventory is not None
+    assert (calib.inventory.cols, calib.inventory.rows) == (7, 4)
     assert calib.chat_phrases == {"inventory_full": []}
 
 

@@ -9,5 +9,15 @@
     "inventory_full": []
   },
   "templates": {},
-  "inventory": null
+  "inventory": {
+    "window": {"roi": [2298, 217, 126, 94], "file": "templates/inventory_window.png", "threshold": 0.8},
+    "money_roi": [2244, 531, 85, 22],
+    "slot_origin": [2193, 577],
+    "slot_size": [45, 45],
+    "slot_step": [49, 49],
+    "cols": 7,
+    "rows": 4,
+    "empty_slot_file": "templates/empty_slot.png",
+    "empty_max_diff": 12
+  }
 }
