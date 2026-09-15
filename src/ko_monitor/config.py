@@ -44,18 +44,33 @@ class Config:
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
 
 
-def load_config(path: Path | None) -> Config:
-    if path is None or not path.exists():
-        return Config()
-    raw = tomllib.loads(path.read_text(encoding="utf-8"))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def load_config(path: Path | None, base_dir: Path = PROJECT_ROOT) -> Config:
+    """Relative paths resolve against the config file's folder, or base_dir when there is no file.
+
+    Raises tomllib.TOMLDecodeError for invalid TOML and TypeError for unknown keys in a section.
+    """
+    if path is not None and path.exists():
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        base = path.resolve().parent
+    else:
+        raw = {}
+        base = base_dir
+
+    def resolve(value: str | Path) -> Path:
+        p = Path(value)
+        return p if p.is_absolute() else base / p
+
     general = raw.get("general", {})
     defaults = Config()
     return Config(
         process_name=general.get("process_name", defaults.process_name),
         window_title=general.get("window_title", defaults.window_title),
-        data_dir=Path(general.get("data_dir", defaults.data_dir)),
-        log_dir=Path(general.get("log_dir", defaults.log_dir)),
-        calibration_path=Path(general.get("calibration_path", defaults.calibration_path)),
+        data_dir=resolve(general.get("data_dir", defaults.data_dir)),
+        log_dir=resolve(general.get("log_dir", defaults.log_dir)),
+        calibration_path=resolve(general.get("calibration_path", defaults.calibration_path)),
         thresholds=Thresholds(**raw.get("thresholds", {})),
         push=PushConfig(**raw.get("push", {})),
         heartbeat=HeartbeatConfig(**raw.get("heartbeat", {})),

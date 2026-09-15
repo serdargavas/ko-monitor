@@ -3,7 +3,11 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import logging
+import re
+import sys
 import time
+import tomllib
 from datetime import datetime
 from pathlib import Path
 
@@ -11,7 +15,27 @@ import cv2
 
 from ko_monitor.calibration import crop, load_calibration
 from ko_monitor.capture import WgcCapture
-from ko_monitor.config import Config, load_config
+from ko_monitor.config import PROJECT_ROOT, Config, load_config
+
+log = logging.getLogger(__name__)
+
+_HC_PING_URL = re.compile(
+    r"^https://hc-ping\.com/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/?$", re.IGNORECASE
+)
+
+
+def run_config_warnings(cfg: Config, config_path: Path) -> list[str]:
+    """Settings that silently weaken live monitoring."""
+    warnings = []
+    if not config_path.exists():
+        warnings.append(f"config file {config_path} not found; using defaults")
+    if not cfg.heartbeat.ping_url:
+        warnings.append("heartbeat.ping_url is empty; heartbeat disabled")
+    elif cfg.heartbeat.api_key and not _HC_PING_URL.match(cfg.heartbeat.ping_url):
+        warnings.append(
+            "heartbeat.ping_url does not look like https://hc-ping.com/<uuid>; heartbeat pause will fail"
+        )
+    return warnings
 
 
 def parse_roi(text: str) -> tuple[int, int, int, int]:
@@ -123,6 +147,9 @@ def cmd_run(args: argparse.Namespace, cfg: Config) -> int:
     from ko_monitor.vapid import ensure_vapid_key
 
     setup_logging(cfg.log_dir)
+    if not args.replay:
+        for warning in run_config_warnings(cfg, args.config):
+            log.warning(warning)
     calib = load_calibration(cfg.calibration_path)
     detector = Detector(calib, Ocr(calib.ocr_min_score))
 
@@ -168,7 +195,7 @@ def cmd_vapid(args: argparse.Namespace, cfg: Config) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ko_monitor")
-    parser.add_argument("--config", type=Path, default=Path("config.toml"))
+    parser.add_argument("--config", type=Path, default=PROJECT_ROOT / "config.toml")
     sub = parser.add_subparsers(dest="command", required=True)
 
     snap = sub.add_parser("snap", help="save the current game frame to samples/<label>/")
@@ -207,4 +234,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args, load_config(args.config))
+    try:
+        cfg = load_config(args.config, PROJECT_ROOT)
+    except (tomllib.TOMLDecodeError, TypeError) as exc:
+        detail = " ".join(str(exc).split())
+        print(f"Ayar dosyası hatalı: {args.config}: {detail}", file=sys.stderr)
+        return 2
+    return args.func(args, cfg)
