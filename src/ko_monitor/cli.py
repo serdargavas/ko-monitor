@@ -133,8 +133,7 @@ def cmd_detect(args: argparse.Namespace, cfg: Config) -> int:
 
 
 def cmd_run(args: argparse.Namespace, cfg: Config) -> int:
-    import threading
-
+    from ko_monitor import runtime
     from ko_monitor.agent import Agent, run_replay
     from ko_monitor.detectors import Detector
     from ko_monitor.heartbeat import Heartbeat
@@ -143,8 +142,9 @@ def cmd_run(args: argparse.Namespace, cfg: Config) -> int:
     from ko_monitor.notifier import WebPushNotifier
     from ko_monitor.ocr import Ocr
     from ko_monitor.process_watch import is_process_running
+    from ko_monitor.status import StatusBoard
     from ko_monitor.storage import Storage
-    from ko_monitor.vapid import ensure_vapid_key
+    from ko_monitor.vapid import application_server_key, ensure_vapid_key
 
     setup_logging(cfg.log_dir)
     if not args.replay:
@@ -154,6 +154,7 @@ def cmd_run(args: argparse.Namespace, cfg: Config) -> int:
     detector = Detector(calib, Ocr(calib.ocr_min_score))
 
     if args.replay:
+        # Offline check of recorded frames: no API, no push, no heartbeat.
         db_path = cfg.data_dir / "replay.sqlite3"
         db_path.unlink(missing_ok=True)
         storage = Storage(db_path)
@@ -164,25 +165,22 @@ def cmd_run(args: argparse.Namespace, cfg: Config) -> int:
             storage.close()
         return 0
 
+    board = StatusBoard()
     storage = Storage(cfg.data_dir / "ko_monitor.sqlite3")
-    notifier = WebPushNotifier(
-        storage, ensure_vapid_key(cfg.data_dir / "vapid_private.pem"),
-        cfg.push.contact, cfg.push.max_age_s,
-    )
+    vapid_path = ensure_vapid_key(cfg.data_dir / "vapid_private.pem")
+    notifier = WebPushNotifier(storage, vapid_path, cfg.push.contact, cfg.push.max_age_s)
     source = WgcCapture(cfg.window_title, calib.black_threshold)
     agent = Agent(
         cfg, storage, source, detector, Monitor(cfg.thresholds), notifier,
         Heartbeat(cfg.heartbeat.ping_url, cfg.heartbeat.api_key),
         lambda: is_process_running(cfg.process_name),
+        board=board,
     )
-    stop = threading.Event()
     try:
-        agent.run(stop)
+        # One process: agent loop thread + API server (same storage, capture and notifier).
+        runtime.serve(agent, storage, source, notifier, board, cfg, application_server_key(vapid_path))
     except KeyboardInterrupt:
-        stop.set()
-    finally:
-        source.close()
-        storage.close()
+        log.info("stopped by user")
     return 0
 
 

@@ -100,3 +100,90 @@ def test_ocr_command_survives_characters_outside_the_console_code_page(tmp_path:
     out = capsys.readouterr().out
     assert code == 0
     assert "福" in out
+
+
+def write_run_config(tmp_path: Path) -> Path:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[general]\ndata_dir = "data"\nlog_dir = "logs"\n'
+        f'calibration_path = "{(ROOT / "calibration.json").as_posix()}"\n'
+        "[api]\nport = 9123\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+class FakeCapture:
+    def __init__(self, window_title, black_threshold=0.95):
+        self.window_title = window_title
+
+    def latest(self):
+        raise AssertionError("capture is not used in this test")
+
+    def close(self):
+        pass
+
+
+def patch_heavy_run_parts(monkeypatch):
+    """No OCR model, no window capture, no log files: only the wiring in cmd_run is exercised."""
+    import ko_monitor.detectors as detectors_module
+    import ko_monitor.logging_setup as logging_setup
+    import ko_monitor.ocr as ocr_module
+
+    monkeypatch.setattr(logging_setup, "setup_logging", lambda log_dir: None)
+    monkeypatch.setattr(ocr_module, "Ocr", lambda min_score=0.0: object())
+    monkeypatch.setattr(detectors_module, "Detector", lambda calib, ocr: object())
+    monkeypatch.setattr("ko_monitor.cli.WgcCapture", FakeCapture)
+
+
+def test_live_run_shares_storage_capture_notifier_and_board_with_the_api(tmp_path: Path, monkeypatch):
+    import ko_monitor.runtime as runtime
+
+    patch_heavy_run_parts(monkeypatch)
+    seen = {}
+
+    def fake_serve(agent, storage, source, notifier, board, cfg, vapid_public_key, **kwargs):
+        seen.update(agent=agent, storage=storage, source=source, notifier=notifier, board=board, cfg=cfg, key=vapid_public_key)
+
+    monkeypatch.setattr(runtime, "serve", fake_serve)
+    assert main(["--config", str(write_run_config(tmp_path)), "run"]) == 0
+
+    agent = seen["agent"]
+    assert agent._storage is seen["storage"]
+    assert agent._source is seen["source"]
+    assert agent._notifier is seen["notifier"]
+    assert agent._board is seen["board"]
+    assert isinstance(seen["source"], FakeCapture) and seen["source"].window_title == "Knight Evolution"
+    assert seen["cfg"].api.port == 9123
+    assert len(seen["key"]) == 87
+    assert (tmp_path / "data" / "vapid_private.pem").exists()
+    seen["storage"].close()
+
+
+def test_ctrl_c_ends_the_live_run_with_exit_code_0(tmp_path: Path, monkeypatch):
+    import ko_monitor.runtime as runtime
+
+    patch_heavy_run_parts(monkeypatch)
+    storages = []
+
+    def interrupted_serve(agent, storage, *args, **kwargs):
+        storages.append(storage)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runtime, "serve", interrupted_serve)
+    assert main(["--config", str(write_run_config(tmp_path)), "run"]) == 0
+    storages[0].close()
+
+
+def test_replay_run_does_not_start_the_api(tmp_path: Path, monkeypatch, capsys):
+    import ko_monitor.agent as agent_module
+    import ko_monitor.runtime as runtime
+
+    patch_heavy_run_parts(monkeypatch)
+    monkeypatch.setattr(runtime, "serve", lambda *args, **kwargs: pytest.fail("replay must not start the API"))
+    monkeypatch.setattr(
+        agent_module, "run_replay",
+        lambda cfg, folder, detector, storage: [{"kind": "game_started", "detail": ""}],
+    )
+    assert main(["--config", str(write_run_config(tmp_path)), "run", "--replay", str(tmp_path)]) == 0
+    assert "game_started" in capsys.readouterr().out
