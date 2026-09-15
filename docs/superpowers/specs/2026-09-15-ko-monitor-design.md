@@ -61,13 +61,14 @@ Kullanım senaryoları: Knight Genie açıkken bilgisayar başında değilken (A
 | `pwa` | React + Vite + TypeScript + `vite-plugin-pwa`. | — |
 
 `Readings` alanları (her biri okunamazsa `None` = bilinmiyor):
-`hud_visible` (bool: HP yazısı geçerli okundu mu), `hp`, `hp_max`, `zone`, `revive_dialog`, `login_screen`, `disconnect_dialog`, `chat_events` (liste: `inventory_full`, …), `inventory_open`, `money`, `slots_used`, `slots_total`, `frame_diff`.
+`hud_visible` (bool: HP yazısı geçerli okundu mu), `hp`, `hp_max`, `zone`, `revive_dialog`, `login_screen`, `disconnect_dialog`, `dialog_text` (ekranın ortasındaki açık pencerenin okunan yazısı; pencere yoksa `None`), `chat_events` (liste: `inventory_full`, …), `inventory_open`, `money`, `slots_used`, `slots_total`, `frame_diff`.
 
 ## 4. Tespit
 
 - **Bölgeler (ROI):** 2560x1440 ve UI ölçeği 1.0 için `calibration.json` içinde tanımlı.
 - **Yazılar (HP, para, bölge adı):** sabit bölgede RapidOCR yalnızca tanıma modu (`use_det=False`). Spike ölçümü: ~15 ms; gerçek karelerde `9718/9996` ve `Ronark Land (428, 506)` hatasız okundu. (Rakam şablonlarına gerek kalmadı.)
 - **Pencereler/ekranlar (diriltme penceresi, envanter başlığı, giriş/sunucu seçim ekranı, bağlantı koptu penceresi, boş slot):** şablon eşleştirme, eşik değeri kalibrasyonda.
+- **Orta pencere (ölüm ve bağlantı koptu bildirimi aynı pencere):** ölüm bildirimi ile bağlantı koptu bildirimi ekranın ortasındaki aynı pencerede, yalnızca farklı yazıyla çıkar; disconnect sırasında HUD arkada görünür kalır. Pencere, yazıdan bağımsız sabit bir çerçeve parçasının (sol üst köşe süsü) şablonuyla bulunur; açıksa yazı satırları sabit bölgelerden RapidOCR tanıma modunda okunur (`dialog_text`). Yazı `calibration.json` içindeki ifade listeleriyle sınıflanır: diriltme ifadeleri → `revive_dialog`, disconnect ifadeleri → `disconnect_dialog`, yoksayılacak ifadeler → pencere yok sayılır. Hiçbir listeye uymayan yazı "tanınmayan pencere"dir (bkz. §5).
 - **Chat mesajları:** RapidOCR algılama + tanıma (spike ölçümü ~0.8 sn/çağrı); yalnızca HUD görünürken çalışır; bir önceki okumada olmayan (yeni) satırlar değerlendirilir; anahtar ifadeler `calibration.json`'da.
 - **Belirsiz okuma** (eşik altı eşleşme, düşük OCR güveni) → `None`; asla ölüm/disconnect sayılmaz.
 
@@ -113,6 +114,8 @@ Aynı anda birden fazla koşul doğruysa **öncelik:** Kapalı > Kör > Disconne
 | Ölüm | `hp == 0` **veya** `revive_dialog` | art arda 2 okuma (~4 sn) | durum değişene kadar tek |
 | Envanter dolu | `inventory_full` chat olayı **veya** (`inventory_open` ve `slots_used == slots_total`) | chat en fazla 4 sn'de bir okunur (~4-6 sn) | en fazla 10 dk'da bir |
 | Disconnect (kesin) | `login_screen` **veya** `disconnect_dialog` | art arda 2 okuma (~4 sn) | durum değişene kadar tek |
+| Disconnect (pencere yazısı) | orta pencere açık ve yazısı bir disconnect ifadesi içeriyor (`disconnect_dialog`); bildirimde pencere yazısı | art arda 2 okuma (~4 sn) | durum değişene kadar tek |
+| Tanınmayan pencere, karakter canlı | orta pencere açık, yazısı hiçbir listeye uymuyor ve `hp > 0`; bildirimde pencere yazısı (ilk gerçek disconnect yazıyı öğretir) | 30 sn kesintisiz (`unknown_dialog_s`) | durum değişene kadar tek |
 | Disconnect (dolaylı) | süreç açık ve `hud_visible == False` | 15 sn kesintisiz | durum değişene kadar tek |
 | Oyun kapandı | izlenirken süreç kayboldu | anında | tek |
 | Donmuş | `frame_diff` ≈ 0 | 120 sn kesintisiz | durum değişene kadar tek |
@@ -120,7 +123,7 @@ Aynı anda birden fazla koşul doğruysa **öncelik:** Kapalı > Kör > Disconne
 
 - Ajan başladığında oyun zaten kapalıysa "Oyun kapandı" bildirimi gönderilmez.
 - Oyun açıldıktan sonra HUD ilk kez görülene kadar (en fazla 5 dk, `startup_grace_s`) Disconnect/Kör/Donmuş/Ölü bildirimi verilmez (giriş, sunucu ve karakter seçim ekranları). Bu sürede koşul sayaçları işlemez: HUD görülünce sayaçlar sıfırdan başlar; süre HUD görülmeden dolarsa kurallar o andan itibaren normal işler (ör. Disconnect (dolaylı) 15 sn sonra). Envanter dolu olayı bundan etkilenmez. Oyun her yeniden açıldığında bu süre yeniden başlar.
-- Kötü durumdan çıkış olumlu okuma ister: Ölü → Canlı ancak `hp > 0` okunduğunda, Disconnect → Canlı ancak HUD görüldüğünde. Belirsiz okuma (`None`) durumu değiştirmez; böylece tek bir hatalı okuma tekrar bildirime yol açmaz.
+- Kötü durumdan çıkış olumlu okuma ister: Ölü → Canlı ancak `hp > 0` okunduğunda, Disconnect → Canlı ancak HUD görüldüğünde; pencere kaynaklı Disconnect → Canlı ancak pencere kapanmış ve HUD görülmüşken. Belirsiz okuma (`None`) durumu değiştirmez; böylece tek bir hatalı okuma tekrar bildirime yol açmaz.
 - Oyun izlenirken kapanırsa heartbeat kontrolü duraklatılır (bilerek kapatmada dış alarm gelmez; çökme durumunda "Oyun kapandı" push'u zaten gider). Oyun tekrar açılınca ilk ping kontrolü otomatik olarak yeniden etkinleştirir.
 
 ### Bildirim içeriği
