@@ -134,10 +134,30 @@ def cmd_detect(args: argparse.Namespace, cfg: Config) -> int:
 
 def cmd_run(args: argparse.Namespace, cfg: Config) -> int:
     from ko_monitor import runtime
+    from ko_monitor.logging_setup import setup_logging
+
+    setup_logging(cfg.log_dir)
+    if args.replay:
+        return _run_monitor(args, cfg, None)
+    for warning in run_config_warnings(cfg, args.config):
+        log.warning(warning)
+    # Bind the API port before loading OCR or opening storage: a second copy (e.g. started while
+    # the scheduled task's copy runs) exits non-zero here without doing any monitoring work.
+    try:
+        api_socket = runtime.bind_api_socket(cfg.api.port)
+    except runtime.ApiPortInUse:
+        return 1
+    try:
+        return _run_monitor(args, cfg, api_socket)
+    finally:
+        api_socket.close()
+
+
+def _run_monitor(args: argparse.Namespace, cfg: Config, api_socket) -> int:
+    from ko_monitor import runtime
     from ko_monitor.agent import Agent, run_replay
     from ko_monitor.detectors import Detector
     from ko_monitor.heartbeat import Heartbeat
-    from ko_monitor.logging_setup import setup_logging
     from ko_monitor.monitor import Monitor
     from ko_monitor.notifier import WebPushNotifier
     from ko_monitor.ocr import Ocr
@@ -146,10 +166,6 @@ def cmd_run(args: argparse.Namespace, cfg: Config) -> int:
     from ko_monitor.storage import Storage
     from ko_monitor.vapid import application_server_key, ensure_vapid_key
 
-    setup_logging(cfg.log_dir)
-    if not args.replay:
-        for warning in run_config_warnings(cfg, args.config):
-            log.warning(warning)
     calib = load_calibration(cfg.calibration_path)
     detector = Detector(calib, Ocr(calib.ocr_min_score))
 
@@ -178,7 +194,9 @@ def cmd_run(args: argparse.Namespace, cfg: Config) -> int:
     )
     try:
         # One process: agent loop thread + API server (same storage, capture and notifier).
-        runtime.serve(agent, storage, source, notifier, board, cfg, application_server_key(vapid_path))
+        runtime.serve(
+            agent, storage, source, notifier, board, cfg, application_server_key(vapid_path), sock=api_socket
+        )
     except KeyboardInterrupt:
         log.info("stopped by user")
     return 0

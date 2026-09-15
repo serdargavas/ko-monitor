@@ -134,6 +134,33 @@ def patch_heavy_run_parts(monkeypatch):
     monkeypatch.setattr(ocr_module, "Ocr", lambda min_score=0.0: object())
     monkeypatch.setattr(detectors_module, "Detector", lambda calib, ocr: object())
     monkeypatch.setattr("ko_monitor.cli.WgcCapture", FakeCapture)
+    # Never bind a real port from the CLI tests.
+    monkeypatch.setattr("ko_monitor.runtime.bind_api_socket", lambda port: FakeApiSocket(port))
+
+
+class FakeApiSocket:
+    def __init__(self, port):
+        self.port = port
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+def test_busy_port_ends_the_live_run_before_any_work(tmp_path: Path, monkeypatch):
+    import ko_monitor.ocr as ocr_module
+    import ko_monitor.runtime as runtime
+
+    patch_heavy_run_parts(monkeypatch)
+
+    def busy(port):
+        raise runtime.ApiPortInUse(port)
+
+    monkeypatch.setattr(runtime, "bind_api_socket", busy)
+    monkeypatch.setattr(ocr_module, "Ocr", lambda min_score=0.0: pytest.fail("OCR must not load"))
+    monkeypatch.setattr(runtime, "serve", lambda *args, **kwargs: pytest.fail("serve must not run"))
+    assert main(["--config", str(write_run_config(tmp_path)), "run"]) == 1
+    assert not (tmp_path / "data" / "ko_monitor.sqlite3").exists()
 
 
 def test_live_run_shares_storage_capture_notifier_and_board_with_the_api(tmp_path: Path, monkeypatch):
@@ -144,10 +171,13 @@ def test_live_run_shares_storage_capture_notifier_and_board_with_the_api(tmp_pat
 
     def fake_serve(agent, storage, source, notifier, board, cfg, vapid_public_key, **kwargs):
         seen.update(agent=agent, storage=storage, source=source, notifier=notifier, board=board, cfg=cfg, key=vapid_public_key)
+        seen["sock"] = kwargs.get("sock")
 
     monkeypatch.setattr(runtime, "serve", fake_serve)
     assert main(["--config", str(write_run_config(tmp_path)), "run"]) == 0
 
+    # The port is bound in cmd_run (before OCR and storage) and handed to serve, then released.
+    assert isinstance(seen["sock"], FakeApiSocket) and seen["sock"].port == 9123 and seen["sock"].closed
     agent = seen["agent"]
     assert agent._storage is seen["storage"]
     assert agent._source is seen["source"]
