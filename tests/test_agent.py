@@ -129,3 +129,36 @@ def test_detector_crash_does_not_stop_the_loop(h):
     h.tick_at(0)
     assert h.tick_at(2, RuntimeError("boom")) == 2.0
     assert h.agent.monitor.state.value == "alive"
+
+
+class FakeStop:
+    def __init__(self, rounds):
+        self.rounds = rounds
+        self.waits = []
+
+    def is_set(self):
+        return len(self.waits) >= self.rounds
+
+    def wait(self, delay):
+        self.waits.append(delay)
+
+
+def test_run_waits_only_for_the_rest_of_the_tick(tmp_path):
+    clock = {"mono": 0.0}
+    durations = iter([0.5, 3.0, 1.25])
+
+    def work(delay):
+        clock["mono"] += next(durations)
+        if delay is None:
+            raise RuntimeError("tick boom")
+        return delay
+
+    delays = iter([2.0, 2.0, None])
+    agent = Agent(
+        Config(data_dir=tmp_path), None, FakeSource(), FakeDetector(), Monitor(Config().thresholds),
+        FakeNotifier(), FakeHeartbeat(), lambda: True, monotonic=lambda: clock["mono"],
+    )
+    agent.tick = lambda: work(next(delays))
+    stop = FakeStop(rounds=3)
+    agent.run(stop)
+    assert stop.waits == [1.5, 0.0, 0.75]

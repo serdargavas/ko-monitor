@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+
 import numpy as np
 
 from ko_monitor.calibration import Calibration
@@ -17,11 +20,30 @@ from ko_monitor.ocr import Ocr
 class Detector:
     """Stateful (chat history, previous frame): use one instance per frame stream."""
 
-    def __init__(self, calib: Calibration, ocr: Ocr):
+    def __init__(
+        self,
+        calib: Calibration,
+        ocr: Ocr,
+        chat_interval_s: float = 4.0,
+        now: Callable[[], float] = time.monotonic,
+    ):
         self._calib = calib
         self._ocr = ocr
         self._chat = ChatTracker()
         self._diff = FrameDiff()
+        self._chat_interval_s = chat_interval_s
+        self._now = now
+        self._last_chat_read: float | None = None
+
+    def _chat_events(self, frame: np.ndarray, hud_visible: bool) -> list[str]:
+        """Chat OCR (det + rec) is the expensive part of a tick: run it only every chat_interval_s."""
+        if not hud_visible:
+            return []
+        now = self._now()
+        if self._last_chat_read is not None and now - self._last_chat_read < self._chat_interval_s:
+            return []
+        self._last_chat_read = now
+        return read_chat(frame, self._calib, self._ocr, self._chat)
 
     def detect(self, frame: np.ndarray) -> Readings | None:
         height, width = frame.shape[:2]
@@ -40,7 +62,7 @@ class Detector:
             revive_dialog=template_present(frame, templates.get("revive_dialog")),
             login_screen=template_present(frame, templates.get("login_screen")),
             disconnect_dialog=template_present(frame, templates.get("disconnect_dialog")),
-            chat_events=read_chat(frame, self._calib, self._ocr, self._chat) if hud_visible else [],
+            chat_events=self._chat_events(frame, hud_visible),
             inventory_open=inventory_open,
             money=money,
             slots_used=slots_used,

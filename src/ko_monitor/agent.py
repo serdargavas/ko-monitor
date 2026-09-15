@@ -29,6 +29,7 @@ class Agent:
         heartbeat,
         process_running: Callable[[], bool],
         now: Callable[[], float] = time.time,
+        monotonic: Callable[[], float] = time.monotonic,
     ):
         self._cfg = cfg
         self._storage = storage
@@ -39,6 +40,7 @@ class Agent:
         self._heartbeat = heartbeat
         self._process_running = process_running
         self._now = now
+        self._monotonic = monotonic
         self._last_snapshot = float("-inf")
 
     def tick(self) -> float:
@@ -79,12 +81,14 @@ class Agent:
     def run(self, stop: threading.Event) -> None:
         log.info("agent started")
         while not stop.is_set():
+            started = self._monotonic()
             try:
                 delay = self.tick()
             except Exception:
                 log.exception("tick failed")
                 delay = self._cfg.thresholds.tick_s
-            stop.wait(delay)
+            # Fixed rate: the tick's own work counts toward the delay.
+            stop.wait(max(0.0, delay - (self._monotonic() - started)))
         log.info("agent stopped")
 
 

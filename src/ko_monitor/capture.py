@@ -82,7 +82,7 @@ class WgcCapture:
         cap = WindowsCapture(
             cursor_capture=False,
             draw_border=False,
-            minimum_update_interval=250,
+            minimum_update_interval=1000,  # the loop consumes one frame per tick
             window_name=self._title,
         )
 

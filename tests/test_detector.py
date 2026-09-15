@@ -22,3 +22,34 @@ def test_detect_real_frame(calib, ocr):
 @pytest.mark.ocr
 def test_wrong_resolution_is_unreadable(calib, ocr):
     assert Detector(calib, ocr).detect(np.zeros((1080, 1920, 3), np.uint8)) is None
+
+
+def test_chat_is_read_at_most_once_per_chat_interval(calib, monkeypatch):
+    import ko_monitor.detectors as detectors
+
+    hud = {"visible": True}
+    chat_reads = []
+    monkeypatch.setattr(
+        detectors, "read_hud", lambda frame, calib, ocr: (hud["visible"], 9000, 9996, "Ronark Land")
+    )
+    monkeypatch.setattr(detectors, "read_inventory", lambda frame, inv, ocr: (None, None, None, None))
+    monkeypatch.setattr(detectors, "template_present", lambda frame, template: None)
+    monkeypatch.setattr(
+        detectors, "read_chat", lambda frame, calib, ocr, tracker: chat_reads.append(1) or ["inventory_full"]
+    )
+    clock = {"now": 100.0}
+    detector = Detector(calib, None, chat_interval_s=4.0, now=lambda: clock["now"])
+    width, height = calib.resolution
+    frame = np.zeros((height, width, 3), np.uint8)
+
+    assert detector.detect(frame).chat_events == ["inventory_full"]
+    clock["now"] = 103.9
+    assert detector.detect(frame).chat_events == []
+    clock["now"] = 104.0
+    assert detector.detect(frame).chat_events == ["inventory_full"]
+    assert len(chat_reads) == 2
+
+    hud["visible"] = False
+    clock["now"] = 110.0
+    assert detector.detect(frame).chat_events == []
+    assert len(chat_reads) == 2

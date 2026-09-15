@@ -20,7 +20,13 @@ class Ocr:
     def __init__(self, min_score: float = 0.8):
         from rapidocr import RapidOCR
 
-        self._engine = RapidOCR()
+        # onnxruntime uses every core by default; cap it so OCR does not starve the game.
+        self._engine = RapidOCR(
+            params={
+                "EngineConfig.onnxruntime.intra_op_num_threads": 2,
+                "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+            }
+        )
         self._min_score = min_score
 
     def read_line(self, image: np.ndarray) -> tuple[str, float] | None:
