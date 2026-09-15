@@ -61,14 +61,14 @@ Kullanım senaryoları: Knight Genie açıkken bilgisayar başında değilken (A
 | `pwa` | React + Vite + TypeScript + `vite-plugin-pwa`. | — |
 
 `Readings` alanları (her biri okunamazsa `None` = bilinmiyor):
-`hud_visible`, `hp`, `hp_max`, `revive_dialog`, `login_screen`, `disconnect_dialog`, `chat_events` (liste: `inventory_full`, …), `inventory_open`, `money`, `slots_used`, `slots_total`, `frame_diff`.
+`hud_visible` (bool: HP yazısı geçerli okundu mu), `hp`, `hp_max`, `zone`, `revive_dialog`, `login_screen`, `disconnect_dialog`, `chat_events` (liste: `inventory_full`, …), `inventory_open`, `money`, `slots_used`, `slots_total`, `frame_diff`.
 
 ## 4. Tespit
 
 - **Bölgeler (ROI):** 2560x1440 ve UI ölçeği 1.0 için `calibration.json` içinde tanımlı.
-- **Rakamlar (HP, para):** oyunun bitmap fontundan kesilmiş `0-9` ve `/` şablonlarıyla şablon eşleştirme.
+- **Yazılar (HP, para, bölge adı):** sabit bölgede RapidOCR yalnızca tanıma modu (`use_det=False`). Spike ölçümü: ~15 ms; gerçek karelerde `9718/9996` ve `Ronark Land (428, 506)` hatasız okundu. (Rakam şablonlarına gerek kalmadı.)
 - **Pencereler/ekranlar (diriltme penceresi, envanter başlığı, giriş/sunucu seçim ekranı, bağlantı koptu penceresi, boş slot):** şablon eşleştirme, eşik değeri kalibrasyonda.
-- **Chat mesajları:** RapidOCR, yalnızca chat bölgesi değiştiğinde çalışır; anahtar ifadeler `calibration.json`'da.
+- **Chat mesajları:** RapidOCR algılama + tanıma (spike ölçümü ~0.8 sn/çağrı); yalnızca HUD görünürken çalışır; bir önceki okumada olmayan (yeni) satırlar değerlendirilir; anahtar ifadeler `calibration.json`'da.
 - **Belirsiz okuma** (eşik altı eşleşme, düşük OCR güveni) → `None`; asla ölüm/disconnect sayılmaz.
 
 ### Kalibrasyon
@@ -116,9 +116,10 @@ Aynı anda birden fazla koşul doğruysa **öncelik:** Kapalı > Kör > Disconne
 | Disconnect (dolaylı) | süreç açık ve `hud_visible == False` | 15 sn kesintisiz | durum değişene kadar tek |
 | Oyun kapandı | izlenirken süreç kayboldu | anında | tek |
 | Donmuş | `frame_diff` ≈ 0 | 120 sn kesintisiz | durum değişene kadar tek |
-| Kör | capture `minimized`/`not_found`/`black` **veya** tüm okumalar `None` | 60 sn kesintisiz | durum değişene kadar tek |
+| Kör | capture `minimized`/`not_found`/`black` **veya** kare okunamıyor (çözünürlük uyuşmazlığı, detector hatası) | 60 sn kesintisiz (bu sürede mevcut durum korunur) | durum değişene kadar tek |
 
 - Ajan başladığında oyun zaten kapalıysa "Oyun kapandı" bildirimi gönderilmez.
+- Kötü durumdan çıkış olumlu okuma ister: Ölü → Canlı ancak `hp > 0` okunduğunda, Disconnect → Canlı ancak HUD görüldüğünde. Belirsiz okuma (`None`) durumu değiştirmez; böylece tek bir hatalı okuma tekrar bildirime yol açmaz.
 - Oyun izlenirken kapanırsa heartbeat kontrolü duraklatılır (bilerek kapatmada dış alarm gelmez; çökme durumunda "Oyun kapandı" push'u zaten gider). Oyun tekrar açılınca ilk ping kontrolü otomatik olarak yeniden etkinleştirir.
 
 ### Bildirim içeriği
@@ -131,7 +132,7 @@ Başlık + kısa gövde, örn. **"💀 Karakter öldü"** / "Ronark Land · 11:4
 
 ## 6. Kayıt (SQLite)
 
-- `snapshots(ts, state, hp, hp_max, money_last, slots_used_last, slots_total_last, inventory_seen_at)` — 30 gün saklanır.
+- `snapshots(ts, state, hp, hp_max, zone, money_last, slots_used_last, slots_total_last, inventory_seen_at)` — 30 gün saklanır.
 - `events(id, ts, kind, detail, notified, notified_at)`
 - `push_subscriptions(id, endpoint, keys_json, created_at)`
 
@@ -202,6 +203,8 @@ Başlık + kısa gövde, örn. **"💀 Karakter öldü"** / "Ronark Land · 11:4
 - WebRTC yayını, native uygulama, Pushover (sonradan eklenebilir).
 
 ## 12. Uygulama sırası
+
+Uygulama iki plana bölünür: **Plan 1 – Ajan** (adım 1-3; `docs/superpowers/plans/2026-09-15-ko-monitor-agent.md`) ve **Plan 2 – API, PWA ve kurulum** (adım 4-6; Plan 1 bittikten sonra gerçek koda dayanarak yazılır).
 
 1. **Ajan çekirdeği:** capture, process_watch, `snap` komutu, storage.
 2. **Kalibrasyon + detectors** (kullanıcıdan örnek ekranlar) ve testleri.
