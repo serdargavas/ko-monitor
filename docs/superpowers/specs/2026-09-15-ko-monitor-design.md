@@ -111,7 +111,7 @@ Aynı anda birden fazla koşul doğruysa **öncelik:** Kapalı > Kör > Disconne
 | Olay | Koşul | Onay süresi | Tekrar |
 |---|---|---|---|
 | Ölüm | `hp == 0` **veya** `revive_dialog` | art arda 2 okuma (~4 sn) | durum değişene kadar tek |
-| Envanter dolu | `inventory_full` chat olayı **veya** (`inventory_open` ve `slots_used == slots_total`) | anında (~2 sn) | en fazla 10 dk'da bir |
+| Envanter dolu | `inventory_full` chat olayı **veya** (`inventory_open` ve `slots_used == slots_total`) | chat en fazla 4 sn'de bir okunur (~4-6 sn) | en fazla 10 dk'da bir |
 | Disconnect (kesin) | `login_screen` **veya** `disconnect_dialog` | art arda 2 okuma (~4 sn) | durum değişene kadar tek |
 | Disconnect (dolaylı) | süreç açık ve `hud_visible == False` | 15 sn kesintisiz | durum değişene kadar tek |
 | Oyun kapandı | izlenirken süreç kayboldu | anında | tek |
