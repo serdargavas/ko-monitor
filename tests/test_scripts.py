@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 
@@ -41,6 +42,18 @@ def test_autostart_script_registers_a_logon_task_that_restarts_in_the_project_ro
         "Register-ScheduledTask",
     ):
         assert needle in text, needle
+
+
+def test_autostart_script_adds_a_watchdog_trigger_every_minute():
+    # RestartCount only covers launch failures; a process that exits non-zero is started
+    # again by a trigger repeating every minute, and IgnoreNew keeps it to one instance.
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert re.search(
+        r"New-ScheduledTaskTrigger -Once -At \(Get-Date\)\s+`?\s*-RepetitionInterval \(New-TimeSpan -Minutes 1\)", text
+    )
+    assert re.search(r"-RepetitionDuration \(New-TimeSpan -Days \d{4,}\)", text)
+    assert re.search(r"-Trigger @\(\$logonTrigger, \$watchdogTrigger\)", text)
+    assert "-MultipleInstances IgnoreNew" in text
 
 
 def test_setup_guide_covers_every_step():

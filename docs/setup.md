@@ -76,7 +76,7 @@ Bildirimler Apple push servisi üzerinden gelir: telefonun o anda Tailscale'e ba
 
 ## 7. Otomatik başlatma (Görev Zamanlayıcı)
 
-Elle çalışan ajanı (4. adım) Ctrl+C ile kapat; aynı anda iki kopya çalışırsa ikincisi port dolu olduğu için kapanır.
+Elle çalışan ajanı (4. adım) Ctrl+C ile kapat; aynı anda iki kopya çalışırsa ikincisi izlemeye başlamadan "port 8765 kullanımda" hatasıyla kapanır.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1
@@ -85,9 +85,16 @@ Get-ScheduledTask -TaskName "KO Monitor" | Get-ScheduledTaskInfo
 Get-Content logs\agent.log -Tail 20
 ```
 
-Görev oturum açılışında başlar, konsol penceresi açmaz (`pythonw.exe`) ve hata ile biterse 1 dakikada bir yeniden başlatılır. Günlük: `logs\agent.log`.
+Görev oturum açılışında başlar ve konsol penceresi açmaz (`pythonw.exe`). Ayrıca her dakika tetiklenen bir bekçi (watchdog) tetikleyicisi vardır: ajan çalışıyorsa bu tetikleme yok sayılır (aynı anda tek kopya çalışır); çalışmıyorsa (çöktüyse ya da hata ile kapandıysa) Görev Zamanlayıcı onu en geç 1 dakika içinde yeniden başlatır. Günlük: `logs\agent.log`.
 
-- Durdurmak: `Stop-ScheduledTask -TaskName "KO Monitor"`
+**Doğrulama (kayıttan sonra bir kez yap):**
+
+1. `Start-ScheduledTask -TaskName "KO Monitor"` → `logs\agent.log` içinde `API on http://127.0.0.1:8765` satırı görünmeli.
+2. Ajanı kapat: Görev Yöneticisi → **Ayrıntılar** → `pythonw.exe` → **Görevi sonlandır**. (Ya da portu kısa süre meşgul et: `Stop-ScheduledTask -TaskName "KO Monitor"` ile durdur, 4. adımdaki gibi elle başlat; bu sırada günlükte her dakika "port 8765 kullanımda" satırı çıkar. Sonra elle çalışanı Ctrl+C ile kapat.)
+3. Yaklaşık 1 dakika bekle: `Get-ScheduledTask -TaskName "KO Monitor" | Get-ScheduledTaskInfo` çıktısında **LastRunTime** yenilenmeli, **Görev Zamanlayıcı** → **Görev Zamanlayıcı Kitaplığı** → **KO Monitor** → **Geçmiş** sekmesinde yeni bir "Görev başlatıldı" kaydı ve `logs\agent.log`'da yeni bir `API on` satırı görünmeli. (Geçmiş sekmesi kapalıysa sağdaki **Tüm Görevlerin Geçmişini Etkinleştir** yönetici izni ister; LastRunTime ve günlük yeterlidir.)
+
+- Durdurmak: bekçi tetikleyicisi görevi 1 dakika içinde yeniden başlatır; kalıcı durdurmak için önce `Disable-ScheduledTask -TaskName "KO Monitor"`, sonra `Stop-ScheduledTask -TaskName "KO Monitor"`. Yeniden açmak: `Enable-ScheduledTask -TaskName "KO Monitor"`.
+- Görev kayıtlıyken elle çalıştırmak (4. adım) istersen önce görevi aynı şekilde devre dışı bırak.
 - Kaldırmak: `Unregister-ScheduledTask -TaskName "KO Monitor" -Confirm:$false`
 
 `tailscale serve --bg` ayarı Tailscale tarafından saklanır; bilgisayar yeniden başlayınca tekrar çalıştırman gerekmez.
@@ -101,4 +108,5 @@ Görev oturum açılışında başlar, konsol penceresi açmaz (`pythonw.exe`) v
 | Test bildirimi "Gönderilemedi" | `logs\agent.log` içindeki `push failed` satırları; bilgisayarın internet bağlantısı. |
 | Canlı ekranda "Oyun penceresi küçültülmüş" | Oyun penceresi simge durumunda; Windows küçültülmüş pencereden görüntü vermez. |
 | Durum "Son güncelleme" sürekli eskiyor | Ajan döngüsü durmuş olabilir; görev yeniden başlatılır, `logs\agent.log`'a bak. |
+| `logs\agent.log`'da her dakika "port 8765 kullanımda" | Başka bir KO Monitor (ör. elle başlatılmış) çalışıyor; onu kapat ya da görevi devre dışı bırak. |
 | healthchecks.io'dan yanlış alarm | Oyun kapatılınca kontrol duraklatılır; `[heartbeat] api_key` doğru mu? |
