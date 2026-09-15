@@ -34,6 +34,11 @@ export class FakeWebSocket {
   }
 }
 
+// jsdom has no createObjectURL/revokeObjectURL of its own, so vi.stubGlobal (which only swaps a
+// property already visible on globalThis, and unstubGlobals only restores that same set) cannot
+// undo defineProperty(URL, ...) below; restoreObjectUrlStubs() (called from test/setup.ts) does.
+let restoreObjectUrl: () => void = () => {};
+
 /** Installs FakeWebSocket and counting URL.createObjectURL / revokeObjectURL stubs. */
 export function installStreamFakes() {
   FakeWebSocket.instances = [];
@@ -41,9 +46,26 @@ export function installStreamFakes() {
   let next = 0;
   const createObjectURL = vi.fn(() => `blob:frame-${++next}`);
   const revokeObjectURL = vi.fn();
+  const createDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+  const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
   Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: createObjectURL });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: revokeObjectURL });
+  restoreObjectUrl = () => {
+    restore(URL, "createObjectURL", createDescriptor);
+    restore(URL, "revokeObjectURL", revokeDescriptor);
+    restoreObjectUrl = () => {};
+  };
   return { createObjectURL, revokeObjectURL };
+}
+
+function restore(target: object, prop: string, descriptor: PropertyDescriptor | undefined): void {
+  if (descriptor) Object.defineProperty(target, prop, descriptor);
+  else Reflect.deleteProperty(target, prop);
+}
+
+/** Undoes installStreamFakes()'s URL stubs; safe to call even when nothing was installed. */
+export function restoreObjectUrlStubs(): void {
+  restoreObjectUrl();
 }
 
 /** Sets document.hidden and fires visibilitychange (wrap in act() while something is rendered). */
