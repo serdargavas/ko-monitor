@@ -70,11 +70,18 @@ export default {
       if (loading) return;
       loading = true;
       refreshButton.disabled = true;
-      const end = Date.now() / 1000;
-      const start = end - DAY_S;
+      const clientNow = Date.now() / 1000;
+      const fetchStart = clientNow - DAY_S;
       try {
-        const [events, snapshots] = await Promise.all([getEvents(100), getSnapshots(start)]);
+        const [events, snapshots] = await Promise.all([getEvents(100), getSnapshots(fetchStart)]);
         if (!active) return;
+        // Snapshot timestamps come from the PC's clock; clientNow is the phone's. If the
+        // phone's clock lags the PC's, using clientNow alone as the end boundary would place
+        // the newest snapshot after "end" and buildSegments would drop its (still current)
+        // segment. Clamp the boundary forward to cover the newest snapshot we actually have.
+        const newestTs = snapshots.length ? snapshots[snapshots.length - 1].ts : clientNow;
+        const end = Math.max(clientNow, newestTs);
+        const start = end - DAY_S;
         errorLine.hidden = true;
         body.replaceChildren(timelineCard(snapshots, start, end), listCard(events));
       } catch (error) {

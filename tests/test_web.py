@@ -149,5 +149,21 @@ def test_status_and_events_screens_are_registered_first_status():
     assert {"status", "events", "settings"} <= set(screens)
 
 
+def test_events_screen_clamps_the_timeline_end_to_the_newest_snapshot():
+    text = read("js/screens/events.js")
+    # Old bug: `const end = Date.now() / 1000;` used the phone's clock verbatim as the
+    # boundary, so a phone clock lagging the PC's could place the newest snapshot after
+    # `end` and buildSegments would drop its (still current) segment.
+    assert not re.search(r"const end = Date\.now\(\) / 1000;", text)
+    assert "Math.max(" in text and "Date.now()" in text
+    assert "snapshots.length - 1" in text or "snapshots[snapshots.length" in text
+    assert "start = end - DAY_S" in text
+
+
+def test_status_screen_guards_missing_slot_total():
+    text = read("js/screens/status.js")
+    assert re.search(r"total === null \|\| total === undefined", text)
+
+
 def test_every_tab_has_a_screen_in_tab_order():
     assert registered_screens() == tab_routes() == ["status", "live", "events", "settings"]

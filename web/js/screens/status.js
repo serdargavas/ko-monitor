@@ -34,11 +34,17 @@ function stateCard(status) {
     hpBlock(status.readings));
 }
 
+function slotsText(status) {
+  const used = status.slots_used_last;
+  const total = status.slots_total_last;
+  if (used === null || used === undefined) return "—";
+  if (total === null || total === undefined) return numberText(used);
+  return `${numberText(used)} / ${numberText(total)}`;
+}
+
 function inventoryCard(status) {
   const seen = status.inventory_seen_at;
-  const slots = status.slots_used_last === null || status.slots_used_last === undefined
-    ? "—"
-    : `${status.slots_used_last} / ${status.slots_total_last}`;
+  const slots = slotsText(status);
   const seenText = seen === null || seen === undefined
     ? "hiç (envanter penceresi açılınca okunur)"
     : `${clockText(seen)} (${agoText(status.server_time - seen)})`;
