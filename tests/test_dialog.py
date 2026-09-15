@@ -1,3 +1,4 @@
+import dataclasses
 from pathlib import Path
 
 import cv2
@@ -90,3 +91,34 @@ def test_ignored_text(tmp_path: Path):
 def test_ocr_reads_nothing_is_still_a_dialog(tmp_path: Path):
     frame, spec = build(tmp_path)
     assert read_dialog(frame, spec, FakeOcr([None, None])) == ("", False, False)
+
+
+def test_disconnect_phrase_matches_whole_words_only(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    # A nameplate behind the translucent dialog must not match "server" inside another word.
+    ocr = FakeOcr(["Unexpected notice", "[Observers] Serverus"])
+    assert read_dialog(frame, spec, ocr) == ("Unexpected notice [Observers] Serverus", False, False)
+
+
+def test_disconnect_phrase_matches_multiword_phrase(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    spec = dataclasses.replace(spec, disconnect_phrases=["connection lost"])
+    assert read_dialog(frame, spec, FakeOcr(["The Connection  lost.", None])) == (
+        "The Connection  lost.", False, True,
+    )
+
+
+def test_turkish_letters_are_folded_before_matching(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    spec = dataclasses.replace(
+        spec, disconnect_phrases=["bağlantı", "sunucu"], ignore_phrases=["parti daveti"]
+    )
+    assert read_dialog(frame, spec, FakeOcr(["BAĞLANTI KOPTU", None])) == ("BAĞLANTI KOPTU", False, True)
+    assert read_dialog(frame, spec, FakeOcr(["Baglanti koptu", None])) == ("Baglanti koptu", False, True)
+    assert read_dialog(frame, spec, FakeOcr(["PARTİ DAVETİ", None])) == (None, False, False)
+
+
+def test_revive_phrase_still_matches_as_substring_after_folding(tmp_path: Path):
+    frame, spec = build(tmp_path)
+    ocr = FakeOcr(["Press OK to TELEPORT BACK TO THE RE-SPAWN p", "oint."])
+    assert read_dialog(frame, spec, ocr)[1:] == (True, False)
