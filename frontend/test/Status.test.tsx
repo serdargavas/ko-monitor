@@ -39,7 +39,8 @@ describe("Status screen", () => {
     expect(screen.getByText("Donmuş").className).toBe("badge warn");
     expect(screen.getByText("HP: okunamadı")).toBeTruthy();
     expect(screen.getByText("Bölge: bilinmiyor")).toBeTruthy();
-    expect(screen.getByText("—")).toBeTruthy();
+    // Slots, arrows and potions each read "—" until the inventory window has been seen.
+    expect(screen.getAllByText("—")).toHaveLength(3);
     expect(screen.getByText("hiç (envanter penceresi açılınca okunur)")).toBeTruthy();
     expect(screen.getByText("Henüz olay yok.")).toBeTruthy();
   });
@@ -61,7 +62,7 @@ describe("Status screen", () => {
       "/api/events": [],
     });
     render(<Status />);
-    expect(await screen.findByText(/Genie durumu bilinmiyor/)).toBeTruthy();
+    expect(await screen.findByText("Genie bilinmiyor")).toBeTruthy();
   });
 
   it("shows the genie stopped state and mentions silenced alerts", async () => {
@@ -70,7 +71,18 @@ describe("Status screen", () => {
       "/api/events": [],
     });
     render(<Status />);
-    expect(await screen.findByText(/Genie durdu — bildirimler susturuldu/)).toBeTruthy();
+    expect(await screen.findByText("Genie durdu")).toBeTruthy();
+    expect(screen.getByText(/bildirimleri susturuldu/)).toBeTruthy();
+  });
+
+  it("does not claim alerts are silenced when the genie state is unknown", async () => {
+    stubFetch({
+      "/api/status": agentStatus({ genie_active: null }),
+      "/api/events": [],
+    });
+    render(<Status />);
+    await screen.findByText("Genie bilinmiyor");
+    expect(screen.queryByText(/susturuldu/)).toBeNull();
   });
 
   it("says when the PC cannot be reached", async () => {

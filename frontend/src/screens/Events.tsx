@@ -21,7 +21,7 @@ export function Events() {
   const { data, error, loading, refresh } = usePolling(loadEvents, null);
   return (
     <>
-      <div className="row">
+      <div className="row page-head">
         <h1>Olaylar</h1>
         <button type="button" disabled={loading} onClick={() => void refresh()}>
           Yenile
