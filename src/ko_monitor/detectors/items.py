@@ -33,28 +33,43 @@ def _slot_positions(frame: np.ndarray, inv: InventorySpec) -> list[tuple[int, in
     return cells
 
 
-def _count_of(
-    frame: np.ndarray, cells: list[tuple[int, int]], template: np.ndarray, spec: ItemsSpec, ocr
-) -> int | None:
-    best_score, best_cell = -1.0, None
-    t_h, t_w = template.shape[:2]
-    for x, y in cells:
-        patch = frame[y : y + t_h, x : x + t_w]
-        if patch.shape[:2] != (t_h, t_w):
-            continue
-        score = float(np.nan_to_num(cv2.matchTemplate(patch, template, cv2.TM_CCOEFF_NORMED)).max())
-        if score > best_score:
-            best_score, best_cell = score, (x, y)
-    if best_cell is None or best_score < spec.match_threshold:
-        return 0  # the stack is gone from the bag: nothing left
+def _stack_count(frame: np.ndarray, cell: tuple[int, int], spec: ItemsSpec, ocr) -> int | None:
+    """The number printed across one slot's bottom strip, or None when it cannot be read."""
     cx, cy, cw, ch = spec.count_box
-    x, y = best_cell
+    x, y = cell
     patch = frame[y + cy : y + cy + ch, x + cx : x + cx + cw]
     if patch.size == 0:
         return None
     big = cv2.resize(patch, (cw * _COUNT_SCALE, ch * _COUNT_SCALE), interpolation=cv2.INTER_CUBIC)
     line = ocr.read_line(big)
     return parse_money(line[0]) if line else None
+
+
+def _count_of(
+    frame: np.ndarray, cells: list[tuple[int, int]], template: np.ndarray, spec: ItemsSpec, ocr
+) -> int | None:
+    """Every matching stack added up: carrying two quivers is normal, and counting only the best
+    slot is wrong in both directions - report the small stack and a full bag alerts as "running
+    out", report the big one and no alert ever comes while the active quiver empties.
+    """
+    t_h, t_w = template.shape[:2]
+    total, matched = 0, False
+    for x, y in cells:
+        patch = frame[y : y + t_h, x : x + t_w]
+        if patch.shape[:2] != (t_h, t_w):
+            continue
+        score = float(np.nan_to_num(cv2.matchTemplate(patch, template, cv2.TM_CCOEFF_NORMED)).max())
+        if score < spec.match_threshold:
+            continue
+        matched = True
+        count = _stack_count(frame, (x, y), spec, ocr)
+        if count is None:
+            # A stack we can see but cannot read: adding the other slots alone would under-count
+            # and fire a false "running out" alert, so the whole item reads as unknown and the
+            # monitor keeps its last known value instead.
+            return None
+        total += count
+    return total if matched else 0  # no icon anywhere: the stack is gone from the bag
 
 
 def read_items(

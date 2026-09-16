@@ -49,3 +49,23 @@ def test_wrong_template_height_reads_nothing(ocr):
     # gone" alarm. template_height must be load-bearing, not dead config.
     bad_spec = dataclasses.replace(CALIB.items, template_height=99)
     assert read_items(ON, True, CALIB.inventory, bad_spec, ocr) == (None, None)
+
+
+def test_two_stacks_of_the_same_item_are_summed(ocr):
+    # This committed frame carries two mana stacks (1197 and 5000) whose match scores differ only
+    # by float noise. Keeping the best-scoring slot alone reports an arbitrary one of them: the
+    # small stack is a false "running out" with 6197 potions in the bag, the big one never alerts
+    # while the active stack empties.
+    frame = cv2.imread("samples/inventory_open/20260915-133918.png")
+    _, mana = read_items(frame, True, CALIB.inventory, CALIB.items, ocr)
+    assert mana == 1197 + 5000
+
+
+def test_unreadable_stack_count_reads_unknown(ocr):
+    # A slot whose icon matches but whose number cannot be read must not contribute 0: that would
+    # under-count the bag and fire a false alarm. The whole item reads as unknown instead.
+    class NoDigits:
+        def read_line(self, _image):
+            return None
+
+    assert read_items(ON, True, CALIB.inventory, CALIB.items, NoDigits()) == (None, None)
