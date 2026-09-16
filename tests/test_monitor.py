@@ -449,24 +449,47 @@ def test_blind_gap_keeps_unknown_dialog_timer_only_for_dialog_disconnect(m):
     assert events[0].detail == NOTICE
 
 
+def low(m, ts: float, **counts):
+    """One reading with the genie confirmed on; the bag is open."""
+    return m.observe(ok(ts, **dict(inventory_open=True, genie_active=True, **counts)))
+
+
 def test_low_arrows_alert_once(m):
-    events = m.observe(ok(10.0, **dict(inventory_open=True, arrow_count=900, genie_active=True)))
+    assert low(m, 8.0, arrow_count=900) == []  # one low frame is not enough
+    events = low(m, 10.0, arrow_count=900)
     assert (EventKind.ARROW_LOW, True) in kinds(events)
     # Same tick conditions a second later: no repeat inside item_low_repeat_s.
-    again = m.observe(ok(12.0, **dict(inventory_open=True, arrow_count=880, genie_active=True)))
+    again = low(m, 12.0, arrow_count=880)
     assert EventKind.ARROW_LOW not in [e.kind for e in again]
 
 
 def test_low_arrows_alert_again_after_refill(m):
-    m.observe(ok(10.0, **dict(inventory_open=True, arrow_count=900, genie_active=True)))
-    m.observe(ok(20.0, **dict(inventory_open=True, arrow_count=9000, genie_active=True)))
-    events = m.observe(ok(30.0, **dict(inventory_open=True, arrow_count=800, genie_active=True)))
+    low(m, 8.0, arrow_count=900)
+    low(m, 10.0, arrow_count=900)
+    low(m, 20.0, arrow_count=9000)
+    low(m, 28.0, arrow_count=800)
+    events = low(m, 30.0, arrow_count=800)
     assert (EventKind.ARROW_LOW, True) in kinds(events)
 
 
 def test_low_mana_alert(m):
-    events = m.observe(ok(10.0, **dict(inventory_open=True, mana_count=150, genie_active=True)))
+    low(m, 8.0, mana_count=150)
+    events = low(m, 10.0, mana_count=150)
     assert (EventKind.MANA_LOW, True) in kinds(events)
+
+
+def test_one_low_reading_never_alerts(m):
+    """A trade or shop window over the bag grid, a different bag page and a clipped OCR read all
+    look like "almost out" for a single frame; a refilled read in between must reset the streak."""
+    assert low(m, 10.0, arrow_count=0) == []
+    low(m, 12.0, arrow_count=6380)
+    assert low(m, 14.0, arrow_count=0) == []
+
+
+def test_two_consecutive_low_readings_alert(m):
+    low(m, 10.0, arrow_count=0)
+    events = low(m, 12.0, arrow_count=0)
+    assert (EventKind.ARROW_LOW, True) in kinds(events)
 
 
 def test_item_alerts_need_a_reading(m):
@@ -477,10 +500,37 @@ def test_item_alerts_need_a_reading(m):
 def test_death_is_recorded_but_not_notified_while_genie_is_off():
     monitor = Monitor(T)
     monitor.observe(ok(0.0, genie_active=False))
-    monitor.observe(ok(2.0, hp=0, genie_active=False))
-    events = monitor.observe(ok(4.0, hp=0, genie_active=False))
+    monitor.observe(ok(2.0, genie_active=False))  # genie confirmed off at t=2
+    # The user has been playing in person for five minutes: well past genie_off_grace_s.
+    monitor.observe(ok(302.0, hp=0, genie_active=False))
+    events = monitor.observe(ok(304.0, hp=0, genie_active=False))
     dead = [e for e in events if e.kind == EventKind.DEAD]
     assert dead and dead[0].notify is False
+
+
+def test_death_right_after_the_genie_stops_is_notified():
+    """The AFK disaster: the bot crashes or is kicked, the character stands still and dies. The
+    genie is confirmed off before that death, but nobody is at the keyboard to see it."""
+    monitor = Monitor(T)
+    monitor.observe(ok(0.0, genie_active=False))
+    monitor.observe(ok(2.0, genie_active=False))  # genie confirmed off at t=2
+    assert monitor.genie_active is False
+    monitor.observe(ok(10.0, hp=0, genie_active=False))
+    events = monitor.observe(ok(12.0, hp=0, genie_active=False))
+    dead = [e for e in events if e.kind == EventKind.DEAD]
+    assert dead and dead[0].notify is True
+
+
+def test_genie_stopping_on_the_same_tick_as_the_death_is_notified():
+    """Both debounces use confirm_reads and _update runs before the event is built, so a bot that
+    stops exactly when the character dies confirms 'off' first, every time."""
+    monitor = Monitor(T)
+    monitor.observe(ok(0.0, genie_active=True))
+    monitor.observe(ok(2.0, hp=0, genie_active=False))
+    events = monitor.observe(ok(4.0, hp=0, genie_active=False))
+    assert monitor.genie_active is False
+    dead = [e for e in events if e.kind == EventKind.DEAD]
+    assert dead and dead[0].notify is True
 
 
 def test_disconnect_is_notified_even_while_genie_is_off():
@@ -502,8 +552,11 @@ def test_unknown_genie_state_silences_nothing():
 
 
 def test_low_arrow_alert_is_silent_while_genie_is_off():
+    """Unlike DEAD, the item alerts are silenced the moment the genie is confirmed off: a
+    redundant "arrows are low" buzz while the user plays costs nothing."""
     monitor = Monitor(T)
     monitor.observe(ok(0.0, genie_active=False))
+    monitor.observe(ok(8.0, **dict(inventory_open=True, arrow_count=900, genie_active=False)))
     events = monitor.observe(ok(10.0, **dict(inventory_open=True, arrow_count=900, genie_active=False)))
     low_events = [e for e in events if e.kind == EventKind.ARROW_LOW]
     assert low_events and low_events[0].notify is False
@@ -526,20 +579,50 @@ def test_genie_alternating_readings_never_confirm(m):
     assert m.genie_active is None
 
 
-def test_genie_none_reading_resets_streak_without_clearing_confirmed(m):
+@pytest.mark.parametrize("confirmed", [True, False])
+def test_genie_none_reading_clears_the_confirmed_state(m, confirmed):
+    """An unreadable panel means "unknown" at once, in both directions (spec 2 and 9).
+
+    read_genie returns None when the panel is closed, dragged out of the search band, covered by
+    another window or scoring under threshold. Keeping a confirmed False through that would
+    silence the death alert forever - the whole point of "unknown silences nothing".
+    """
+    m.observe(ok(2.0, genie_active=confirmed))
+    m.observe(ok(4.0, genie_active=confirmed))
+    assert m.genie_active is confirmed
+    m.observe(ok(6.0, genie_active=None))
+    assert m.genie_active is None
+
+
+def test_genie_none_reading_also_resets_the_streak(m):
     m.observe(ok(2.0, genie_active=True))
     m.observe(ok(4.0, genie_active=True))
     assert m.genie_active is True
-    m.observe(ok(6.0, genie_active=False))
-    assert m.genie_active is True
+    m.observe(ok(6.0, genie_active=False))  # one False, not yet confirmed
     m.observe(ok(8.0, genie_active=None))
-    assert m.genie_active is True
+    assert m.genie_active is None
     # Only one consecutive False read since the None reset: not enough to confirm yet.
     m.observe(ok(10.0, genie_active=False))
-    assert m.genie_active is True
+    assert m.genie_active is None
     # Second consecutive False read since the reset: now confirmed.
     m.observe(ok(12.0, genie_active=False))
     assert m.genie_active is False
+
+
+def test_death_while_the_genie_panel_is_unreadable_is_notified():
+    """The reviewer's repro: hours of unreadable frames after a confirmed 'off' used to keep the
+    silencing alive, so a death during them never reached the phone."""
+    monitor = Monitor(T)
+    monitor.observe(ok(0.0, genie_active=False))
+    monitor.observe(ok(2.0, genie_active=False))
+    assert monitor.genie_active is False
+    for i in range(200):  # panel closed / covered: unknown from here on
+        monitor.observe(ok(4.0 + i * 2, genie_active=None))
+    ts = 4.0 + 200 * 2
+    monitor.observe(ok(ts, hp=0, genie_active=None))
+    events = monitor.observe(ok(ts + 2, hp=0, genie_active=None))
+    dead = [e for e in events if e.kind == EventKind.DEAD]
+    assert dead and dead[0].notify is True
 
 
 def test_genie_single_opposite_reading_does_not_flip_confirmed(m):
@@ -617,6 +700,7 @@ def test_silenced_when_genie_off_membership(kind, silenced):
 
 
 def test_arrow_count_none_does_not_rearm_the_alert(m):
+    m.observe(ok(8.0, inventory_open=True, arrow_count=900, genie_active=True))
     m.observe(ok(10.0, inventory_open=True, arrow_count=900, genie_active=True))
     # Inventory window closes (count unknown): must not be treated as a restock.
     m.observe(ok(12.0, inventory_open=False, arrow_count=None, genie_active=True))
@@ -625,5 +709,6 @@ def test_arrow_count_none_does_not_rearm_the_alert(m):
 
 
 def test_arrow_count_zero_alerts(m):
+    m.observe(ok(8.0, inventory_open=True, arrow_count=0, genie_active=True))
     events = m.observe(ok(10.0, inventory_open=True, arrow_count=0, genie_active=True))
     assert (EventKind.ARROW_LOW, True) in kinds(events)

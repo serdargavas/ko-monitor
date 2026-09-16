@@ -22,6 +22,7 @@ class Thresholds:
     arrow_low: int = 1000
     mana_low: int = 200
     item_low_repeat_s: float = 600.0
+    genie_off_grace_s: float = 120.0
     income_max_jump: int = 50_000_000
     frozen_diff_max: float = 0.5
     snapshot_retention_s: float = 30 * 86400

@@ -23,6 +23,12 @@ _SILENCED_WHEN_GENIE_OFF = {
     EventKind.MANA_LOW,
 }
 
+# ... except that a stopped genie is not proof the user is at the keyboard: the bot also stops
+# when it crashes, gets kicked or cannot act, and the classic AFK disaster is "bot stops ->
+# character stands still -> character dies". Only DEAD is expensive enough to miss, so only DEAD
+# waits out genie_off_grace_s; a redundant "bag full" buzz costs nothing.
+_GRACE_BEFORE_SILENCE = {EventKind.DEAD}
+
 
 @dataclass(frozen=True)
 class Observation:
@@ -48,6 +54,11 @@ class Monitor:
         self.inventory_seen_at: float | None = None
         self._last_inventory_alert: float | None = None
         self._last_item_alert: dict[EventKind, float] = {}
+        # Consecutive below-threshold readings per item kind. read_items reports 0 whenever no
+        # icon matches, which also happens when a trade/shop window covers the bag grid or the
+        # user flipped to another bag page, and a clipped OCR read ("6380" -> "380") looks just
+        # as low. One frame must not push; the debounce mirrors _dead_reads/_disconnect_reads.
+        self._item_low_reads: dict[EventKind, int] = {}
         # Kinds _notify actually silenced (not merely throttled) while genie_active was False:
         # exactly the alerts the user never saw. Re-armed on resume; a kind that was pushed for
         # real during the off period is NOT in here and keeps its normal repeat window.
@@ -56,6 +67,9 @@ class Monitor:
         # un-silence it. The state changes only after confirm_reads identical readings.
         self._genie_pending: bool | None = None
         self._genie_reads = 0
+        # When genie_active last became a confirmed False. A user who sat down to play stopped
+        # the bot minutes ago; a bot that stopped because of trouble stopped seconds ago.
+        self._genie_off_since: float | None = None
         # Startup grace: launcher/login/character select show no HUD, so bad states
         # are not evaluated until the HUD is first seen or startup_grace_s passes.
         self._started_at: float | None = None
@@ -132,15 +146,52 @@ class Monitor:
                 detail = self.zone_last or ""
                 if by_dialog and self._dialog_text_last is not None:
                     detail = self._dialog_text_last[:_DETAIL_MAX]
-                events.append(Event(_BAD_EVENTS[target], obs.ts, detail, notify=self._notify(_BAD_EVENTS[target])))
+                kind = _BAD_EVENTS[target]
+                events.append(Event(kind, obs.ts, detail, notify=self._notify(kind, obs.ts)))
         return events
 
-    def _notify(self, kind: EventKind) -> bool:
+    def _notify(self, kind: EventKind, ts: float) -> bool:
         """Genie off silences farm alerts; 'unknown' never silences anything."""
-        if self.genie_active is False and kind in _SILENCED_WHEN_GENIE_OFF:
-            self._silenced_while_off.add(kind)
-            return False
-        return True
+        if self.genie_active is not False or kind not in _SILENCED_WHEN_GENIE_OFF:
+            return True
+        if kind in _GRACE_BEFORE_SILENCE:
+            off_since = self._genie_off_since
+            if off_since is None or ts - off_since < self._t.genie_off_grace_s:
+                # The bot stopped moments ago: much more likely a crash/kick that killed the
+                # character than a user who sat down to play. Tell the phone.
+                return True
+        self._silenced_while_off.add(kind)
+        return False
+
+    def _set_genie(self, ts: float, value: bool | None) -> None:
+        """Applies a confirmed genie state and keeps the 'off since' clock and re-arming honest."""
+        was_off = self.genie_active is False
+        self.genie_active = value
+        if value is False:
+            if not was_off:
+                self._genie_off_since = ts
+            return
+        self._genie_off_since = None
+        if was_off:
+            self._rearm_silenced()
+
+    def _rearm_silenced(self) -> None:
+        """Silencing ended: alerts the user never saw must be allowed to fire again.
+
+        Only the kinds actually silenced while off are re-armed (the user never saw them) - not
+        every kind, or a real push made just before an unrelated genie flap would lose its repeat
+        window and get a spurious second push seconds later.
+        """
+        for kind in self._silenced_while_off:
+            if kind == EventKind.INVENTORY_FULL:
+                self._last_inventory_alert = None
+            elif kind in (EventKind.ARROW_LOW, EventKind.MANA_LOW):
+                self._last_item_alert.pop(kind, None)
+            # EventKind.DEAD cannot be re-armed and is deliberately not handled here: it is a
+            # state-transition event, the state is still DEAD, and nothing re-emits it. A death
+            # silenced during an off period stays unreported for the rest of its life - which is
+            # why _notify's grace window, not this loop, is what keeps a real death audible.
+        self._silenced_while_off.clear()
 
     def _update(self, ts: float, r: Readings) -> None:
         self.last_readings = r
@@ -180,26 +231,20 @@ class Monitor:
                 self._still_since = None
 
         if r.genie_active is None:
+            # An unreadable panel means "unknown", and unknown silences nothing (spec 2 and 9).
+            # Keeping the last confirmed value here would silence the death alert forever once
+            # the panel is closed, dragged out of the search band or covered by another window,
+            # so unknown takes effect immediately - it is the safe direction. The streak resets
+            # too: two fresh confirming reads are needed before silencing can come back.
             self._genie_pending, self._genie_reads = None, 0
+            self._set_genie(ts, None)
         else:
             if r.genie_active == self._genie_pending:
                 self._genie_reads += 1
             else:
                 self._genie_pending, self._genie_reads = r.genie_active, 1
             if self._genie_reads >= self._t.confirm_reads:
-                was_off = self.genie_active is False
-                self.genie_active = r.genie_active
-                if was_off and self.genie_active is True:
-                    # Farming resumed: re-arm only the alerts that were actually silenced while
-                    # off (the user never saw them) - not every kind, or a real push made just
-                    # before an unrelated genie flap would lose its repeat window and get a
-                    # spurious second push seconds later.
-                    for silenced_kind in self._silenced_while_off:
-                        if silenced_kind == EventKind.INVENTORY_FULL:
-                            self._last_inventory_alert = None
-                        else:
-                            self._last_item_alert.pop(silenced_kind, None)
-                    self._silenced_while_off.clear()
+                self._set_genie(ts, r.genie_active)
         if r.arrow_count is not None:
             self.arrow_last = r.arrow_count
         if r.mana_count is not None:
@@ -220,15 +265,19 @@ class Monitor:
             (EventKind.MANA_LOW, r.mana_count, self._t.mana_low),
         ):
             if count is None:
-                continue
+                continue  # bag closed: no evidence either way, the streak simply waits
             if count >= limit:
+                self._item_low_reads[kind] = 0
                 self._last_item_alert.pop(kind, None)  # refilled: the next drop alerts again
                 continue
+            self._item_low_reads[kind] = self._item_low_reads.get(kind, 0) + 1
+            if self._item_low_reads[kind] < self._t.confirm_reads:
+                continue  # one low frame can be an occluded bag grid or a clipped OCR read
             last = self._last_item_alert.get(kind)
             if last is not None and ts - last < self._t.item_low_repeat_s:
                 continue
             self._last_item_alert[kind] = ts
-            events.append(Event(kind, ts, str(count), notify=self._notify(kind)))
+            events.append(Event(kind, ts, str(count), notify=self._notify(kind, ts)))
         return events
 
     def _inventory_events(self, ts: float, r: Readings) -> list[Event]:
@@ -239,7 +288,8 @@ class Monitor:
         if last is not None and ts - last < self._t.inventory_full_repeat_s:
             return []
         self._last_inventory_alert = ts
-        return [Event(EventKind.INVENTORY_FULL, ts, self.zone_last or "", notify=self._notify(EventKind.INVENTORY_FULL))]
+        notify = self._notify(EventKind.INVENTORY_FULL, ts)
+        return [Event(EventKind.INVENTORY_FULL, ts, self.zone_last or "", notify=notify)]
 
     def _disconnect_cause(self, ts: float) -> str | None:
         """'dialog' (center dialog text), 'other' (login screen, template, HUD missing) or None."""
