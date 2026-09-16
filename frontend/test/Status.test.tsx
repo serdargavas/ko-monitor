@@ -55,6 +55,24 @@ describe("Status screen", () => {
     expect(screen.getByText(/Genie çalışıyor/)).toBeTruthy();
   });
 
+  it("shows the genie state as unknown when it has not been read", async () => {
+    stubFetch({
+      "/api/status": agentStatus({ genie_active: null }),
+      "/api/events": [],
+    });
+    render(<Status />);
+    expect(await screen.findByText(/Genie durumu bilinmiyor/)).toBeTruthy();
+  });
+
+  it("shows the genie stopped state and mentions silenced alerts", async () => {
+    stubFetch({
+      "/api/status": agentStatus({ genie_active: false }),
+      "/api/events": [],
+    });
+    render(<Status />);
+    expect(await screen.findByText(/Genie durdu — bildirimler susturuldu/)).toBeTruthy();
+  });
+
   it("says when the PC cannot be reached", async () => {
     stubFetch({ "/api/status": new TypeError("Failed to fetch"), "/api/events": [] });
     render(<Status />);

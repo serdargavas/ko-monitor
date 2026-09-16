@@ -29,8 +29,14 @@ describe("Events screen", () => {
 
   it("shows the income chart above the event list", async () => {
     stubFetch({ "/api/events": [], "/api/snapshots": [], "/api/income?hours=24": income() });
-    render(<Events />);
-    expect(await screen.findByText(/Kazanç/)).toBeTruthy();
+    const { container } = render(<Events />);
+    await screen.findByText(/Kazanç/);
+    const cards = [...container.querySelectorAll(".card")];
+    const incomeIndex = cards.findIndex((card) => /Kazanç/.test(card.textContent ?? ""));
+    const timelineIndex = cards.findIndex((card) => /Son 24 saat/.test(card.textContent ?? ""));
+    expect(incomeIndex).toBeGreaterThanOrEqual(0);
+    expect(timelineIndex).toBeGreaterThanOrEqual(0);
+    expect(incomeIndex).toBeLessThan(timelineIndex);
   });
 
   it("reloads on Yenile and shows an empty list", async () => {
