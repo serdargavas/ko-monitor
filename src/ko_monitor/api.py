@@ -15,6 +15,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ko_monitor.capture import FrameSource
 from ko_monitor.config import PROJECT_ROOT
+from ko_monitor.income import HOUR_S, hourly_income
 from ko_monitor.models import Event, EventKind
 from ko_monitor.notifier import Notifier
 from ko_monitor.origin import origin_allowed
@@ -98,6 +99,7 @@ def create_app(
     web_dir: Path = WEB_DIR,
     now: Callable[[], float] = time.time,
     extra_hosts: Sequence[str] = (),
+    income_max_jump: int = 50_000_000,
 ) -> FastAPI:
     """source and stream_quality feed the live stream route added in stream.py (Task 3)."""
     app = FastAPI(title="KO Monitor", docs_url=None, redoc_url=None, openapi_url=None)
@@ -131,6 +133,12 @@ def create_app(
     @app.get("/api/events")
     def get_events(limit: int = Query(50, ge=1, le=500)):
         return storage.recent_events(limit=limit)
+
+    @app.get("/api/income")
+    def get_income(hours: int = Query(24, ge=1, le=720)):
+        current = now()
+        start = (current // HOUR_S) * HOUR_S - HOUR_S * (hours - 1)
+        return hourly_income(storage.snapshots_since(start), current, hours, income_max_jump)
 
     @app.get("/api/push/vapid-key")
     def get_vapid_key():

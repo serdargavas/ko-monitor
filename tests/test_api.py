@@ -252,3 +252,15 @@ def test_same_host_origin_can_subscribe(env):
     headers = {"origin": "https://pc.tail1234.ts.net", "host": "pc.tail1234.ts.net"}
     assert env.client.post("/api/push/subscribe", json=BROWSER_SUBSCRIPTION, headers=headers).status_code == 201
     assert env.client.post("/api/push/test", headers=headers).status_code == 200
+
+
+def test_income_endpoint(env):
+    body = env.client.get("/api/income?hours=3").json()
+    assert len(body["hours"]) == 3
+    assert {"start", "delta", "samples"} <= set(body["hours"][0])
+    assert "avg_24h" in body
+
+
+def test_income_hours_is_bounded(env):
+    assert env.client.get("/api/income?hours=0").status_code == 422
+    assert env.client.get("/api/income?hours=721").status_code == 422
