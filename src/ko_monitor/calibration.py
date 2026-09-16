@@ -41,6 +41,26 @@ class DialogSpec:
 
 
 @dataclass(frozen=True)
+class GenieSpec:
+    """Knight Genie panel: the stop button is gold while it runs and grey while it is stopped."""
+
+    header: TemplateSpec
+    header_at: tuple[int, int]  # where the header template was cut from; boxes are relative to it
+    stop_box: Roi
+    play_box: Roi
+    margin: float
+
+
+@dataclass(frozen=True)
+class ItemsSpec:
+    arrow_file: Path
+    mana_file: Path
+    match_threshold: float
+    count_box: Roi  # stack count, relative to the slot's top-left corner
+    template_height: int
+
+
+@dataclass(frozen=True)
 class Calibration:
     resolution: tuple[int, int]
     hp_roi: Roi
@@ -52,6 +72,8 @@ class Calibration:
     templates: dict[str, TemplateSpec]
     inventory: InventorySpec | None
     dialog: DialogSpec | None = None
+    genie: GenieSpec | None = None
+    items: ItemsSpec | None = None
 
 
 def load_calibration(path: Path) -> Calibration:
@@ -89,6 +111,28 @@ def load_calibration(path: Path) -> Calibration:
             disconnect_phrases=phrases(dlg.get("disconnect_phrases", [])),
             ignore_phrases=phrases(dlg.get("ignore_phrases", [])),
         )
+    gen = raw.get("genie")
+    genie = None
+    if gen is not None:
+        genie = GenieSpec(
+            header=template(gen["header"]),
+            header_at=tuple(gen["header_at"]),
+            stop_box=tuple(gen["stop_box"]),
+            play_box=tuple(gen["play_box"]),
+            margin=float(gen.get("margin", 60.0)),
+        )
+
+    itm = raw.get("items")
+    items = None
+    if itm is not None:
+        items = ItemsSpec(
+            arrow_file=base / itm["arrow_file"],
+            mana_file=base / itm["mana_file"],
+            match_threshold=float(itm.get("match_threshold", 0.85)),
+            count_box=tuple(itm["count_box"]),
+            template_height=int(itm.get("template_height", 27)),
+        )
+
     return Calibration(
         resolution=tuple(raw["resolution"]),
         hp_roi=tuple(raw["hp_roi"]),
@@ -100,6 +144,8 @@ def load_calibration(path: Path) -> Calibration:
         templates={k: template(v) for k, v in raw.get("templates", {}).items()},
         inventory=inventory,
         dialog=dialog,
+        genie=genie,
+        items=items,
     )
 
 

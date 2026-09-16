@@ -26,5 +26,19 @@
     "revive_phrases": ["teleport back to the re-spawn"],
     "disconnect_phrases": ["disconnect", "disconnected", "connection", "server", "bağlantı", "sunucu"],
     "ignore_phrases": []
+  },
+  "genie": {
+    "header": {"roi": [2200, 0, 360, 220], "file": "templates/genie_header.png", "threshold": 0.8},
+    "header_at": [2330, 0],
+    "stop_box": [2511, 9, 12, 13],
+    "play_box": [2482, 9, 14, 14],
+    "margin": 60
+  },
+  "items": {
+    "arrow_file": "templates/item_arrow.png",
+    "mana_file": "templates/item_mana.png",
+    "match_threshold": 0.85,
+    "count_box": [1, 28, 30, 16],
+    "template_height": 27
   }
 }

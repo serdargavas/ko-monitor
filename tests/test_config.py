@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from helpers import ROOT
-from ko_monitor.config import ApiConfig, load_config
+from ko_monitor.config import ApiConfig, Config, load_config
 
 
 def test_defaults_when_file_missing(tmp_path: Path):
@@ -72,3 +72,10 @@ def test_invalid_api_settings_raise_value_error(tmp_path: Path, text):
     path.write_text(text, encoding="utf-8")
     with pytest.raises(ValueError):
         load_config(path)
+
+
+def test_item_thresholds_have_defaults():
+    t = Config().thresholds
+    assert (t.arrow_low, t.mana_low) == (1000, 200)
+    assert t.item_low_repeat_s == 600.0
+    assert t.income_max_jump == 50_000_000

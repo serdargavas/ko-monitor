@@ -77,3 +77,34 @@ def test_crop():
     part = crop(frame, (10, 20, 30, 40))
     assert part.shape == (40, 30, 3)
     assert (part[0, 0] == frame[20, 10]).all()
+
+
+def test_genie_spec_is_loaded(tmp_path):
+    calib = load_calibration(Path("calibration.json"))
+    assert calib.genie is not None
+    assert calib.genie.stop_box == (2511, 9, 12, 13)
+    assert calib.genie.play_box == (2482, 9, 14, 14)
+    assert calib.genie.margin == 60.0
+    assert calib.genie.header_at == (2330, 0)
+    assert calib.genie.header.roi == (2200, 0, 360, 220)
+    assert calib.genie.header.file.name == "genie_header.png"
+
+
+def test_items_spec_is_loaded():
+    calib = load_calibration(Path("calibration.json"))
+    assert calib.items is not None
+    assert calib.items.match_threshold == 0.85
+    assert calib.items.count_box == (1, 28, 30, 16)
+    assert calib.items.template_height == 27
+    assert calib.items.arrow_file.name == "item_arrow.png"
+    assert calib.items.mana_file.name == "item_mana.png"
+
+
+def test_genie_and_items_are_optional(tmp_path):
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps({
+        "resolution": [2560, 1440], "hp_roi": [0, 0, 1, 1],
+        "zone_roi": [0, 0, 1, 1], "chat_roi": [0, 0, 1, 1],
+    }), encoding="utf-8")
+    calib = load_calibration(path)
+    assert calib.genie is None and calib.items is None
