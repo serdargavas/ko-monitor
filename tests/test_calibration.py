@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from ko_monitor.calibration import crop, load_calibration
@@ -88,6 +89,24 @@ def test_genie_spec_is_loaded(tmp_path):
     assert calib.genie.header_at == (2330, 0)
     assert calib.genie.header.roi == (2200, 0, 360, 220)
     assert calib.genie.header.file.name == "genie_header.png"
+    # A threshold silently loosened to hide a decaying template would turn "panel not found"
+    # into a confident wrong answer, and the panel is what decides whether a death is reported.
+    assert calib.genie.header.threshold == 0.8
+
+
+def test_genie_header_template_excludes_the_countdown(tmp_path):
+    """The committed template must be the title strip only. The "Time Left : N Hour(s)" line
+    below it changes, and with it inside the template the match on other frames fell to 0.79 -
+    under the 0.8 threshold - which reads as "no panel" = genie unknown."""
+    calib = load_calibration(Path("calibration.json"))
+    template = cv2.imread(str(calib.genie.header.file))
+    assert template is not None
+    assert template.shape[:2] == (30, 230)
+    for sample in ("samples/genie_on/20260916-153935.png", "samples/genie_off/20260916-154450.png"):
+        frame = cv2.imread(sample)
+        x, y, w, h = calib.genie.header.roi
+        scores = cv2.matchTemplate(frame[y : y + h, x : x + w], template, cv2.TM_CCOEFF_NORMED)
+        assert scores.max() >= 0.95, sample
 
 
 def test_items_spec_is_loaded():

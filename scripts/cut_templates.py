@@ -12,7 +12,10 @@ from pathlib import Path
 import cv2
 
 ROOT = Path(__file__).resolve().parents[1]
-GENIE_HEADER = (2330, 0, 230, 60)  # roi the header template is cut from
+GENIE_HEADER = (2330, 0, 230, 30)  # region the header template is cut from: the title strip only
+# The strip below the title carries "Time Left : N Hour(s)", a value guaranteed to change. With
+# that line inside the template the header match decayed to 0.79 - under the 0.8 threshold - as
+# the countdown ticked, which reads as "no panel" = genie unknown.
 ARROW_COL, MANA_COL, ITEM_ROW = 6, 5, 3
 TEMPLATE_HEIGHT = 27  # top strip of a slot: excludes the stack count, which changes
 
