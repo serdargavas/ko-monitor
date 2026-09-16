@@ -11,6 +11,8 @@ export type EventKind =
   | "blind"
   | "recovered"
   | "inventory_full"
+  | "arrow_low"
+  | "mana_low"
   | "test";
 
 /** dataclasses.asdict(Readings); only the fields the PWA shows are typed. */
@@ -33,6 +35,9 @@ export interface AgentStatus {
   slots_used_last: number | null;
   slots_total_last: number | null;
   inventory_seen_at: number | null;
+  arrow_last: number | null;
+  mana_last: number | null;
+  genie_active: boolean | null;
 }
 
 /** One row of GET /api/snapshots (oldest first). */
@@ -68,3 +73,18 @@ export interface PushTestResult {
 export type StreamStatus = "ok" | "minimized" | "not_found" | "black";
 
 export type Quality = "low" | "medium" | "high";
+
+/** One hour of GET /api/income; delta null = no reading in that hour. */
+export interface IncomeHour {
+  start: number;
+  delta: number | null;
+  samples: number;
+}
+
+/** GET /api/income?hours=N (oldest hour first). */
+export interface Income {
+  hours: IncomeHour[];
+  avg_1h: number | null;
+  avg_6h: number | null;
+  avg_24h: number | null;
+}

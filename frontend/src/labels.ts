@@ -24,6 +24,8 @@ export const EVENT_LABELS: Record<string, string> = {
   blind: "🙈 İzleme yapılamıyor",
   recovered: "✅ Düzeldi",
   inventory_full: "🎒 Envanter dolu",
+  arrow_low: "🏹 Ok azaldı",
+  mana_low: "🧪 Mana potu azaldı",
   test: "🔔 Test bildirimi",
 };
 

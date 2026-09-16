@@ -1,4 +1,4 @@
-import type { AgentStatus, EventItem, PushTestResult, Quality, Snapshot } from "./types";
+import type { AgentStatus, EventItem, Income, PushTestResult, Quality, Snapshot } from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -20,6 +20,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const getStatus = () => request<AgentStatus>("/api/status");
 export const getEvents = (limit = 50) => request<EventItem[]>(`/api/events?limit=${limit}`);
 export const getSnapshots = (since: number) => request<Snapshot[]>(`/api/snapshots?since=${since}`);
+export const getIncome = (hours = 24) => request<Income>(`/api/income?hours=${hours}`);
 export const getVapidKey = () => request<{ key: string }>("/api/push/vapid-key");
 export const sendTest = () => request<PushTestResult>("/api/push/test", { method: "POST" });
 

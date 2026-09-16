@@ -108,3 +108,9 @@ nav.tabs a.active { color: var(--accent); }
   body.live-mode #screen { padding: 0; max-width: none; }
   body.live-mode .live-stage { margin: 0; border-radius: 0; width: 100vw; height: 100vh; aspect-ratio: auto; }
 }
+
+.income { display: flex; align-items: flex-end; gap: 2px; margin: 10px 0 4px; }
+.income .bar { display: block; border-radius: 3px 3px 0 0; }
+.income .bar-pos { background: #3fb950; }
+.income .bar-neg { background: #f85149; }
+.income .bar-none { background: var(--line); opacity: 0.5; }

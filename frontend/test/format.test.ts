@@ -39,6 +39,7 @@ describe("labels", () => {
   it("covers every state and event kind of the server", () => {
     expect(Object.keys(STATE_LABELS).sort()).toEqual(["alive", "blind", "closed", "dead", "disconnected", "frozen"]);
     expect(Object.keys(EVENT_LABELS).sort()).toEqual([
+      "arrow_low",
       "blind",
       "dead",
       "disconnected",
@@ -46,6 +47,7 @@ describe("labels", () => {
       "game_closed",
       "game_started",
       "inventory_full",
+      "mana_low",
       "recovered",
       "test",
     ]);
