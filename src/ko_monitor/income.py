@@ -39,16 +39,33 @@ def hourly_income(
     hours: int = 24,
     max_jump: int = 50_000_000,
 ) -> dict:
-    """Oldest hour first. delta is None for an hour with no readings (game or bag closed)."""
+    """Oldest hour first. delta is None for an hour with no fresh readings (game or bag closed).
+
+    A snapshot counts as a reading for its hour only when its inventory_seen_at falls in the same
+    hour: money_last is stale otherwise and would report a real "no data" hour as zero income.
+    """
     newest = _bucket(now)
     starts = [newest - HOUR_S * i for i in range(hours - 1, -1, -1)]
     grouped: dict[float, list[int]] = {start: [] for start in starts}
+    seen_last: dict[float, float] = {}
     for snap in snapshots:
         if snap.money_last is None:
             continue
         bucket = _bucket(snap.ts)
-        if bucket in grouped:
-            grouped[bucket].append(int(snap.money_last))
+        if bucket not in grouped:
+            continue
+        # money_last only changes while the inventory window is open; every snapshot written with
+        # the bag closed just repeats an older number. Counting those as readings turns an hour
+        # of AFK-with-the-bag-shut into "delta: 0, samples: 60" instead of the "no data" the spec
+        # promises, and those zeros then drag the headline averages down. A snapshot is evidence
+        # for an hour only if the inventory was actually seen inside that same hour, and repeats
+        # of one reading (same inventory_seen_at, therefore the same number) count once.
+        if snap.inventory_seen_at is None or _bucket(snap.inventory_seen_at) != bucket:
+            continue
+        if seen_last.get(bucket) == snap.inventory_seen_at:
+            continue
+        seen_last[bucket] = snap.inventory_seen_at
+        grouped[bucket].append(int(snap.money_last))
 
     rows = []
     for start in starts:
