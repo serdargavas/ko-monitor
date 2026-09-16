@@ -116,7 +116,7 @@ api_key = "BURAYA-API-KEY"
 7. Ajanı yeniden başlat:
 
 ```powershell
-Restart-ScheduledTask -TaskName "KO Monitor"
+Stop-ScheduledTask -TaskName "KO Monitor"; Start-ScheduledTask -TaskName "KO Monitor"
 ```
 
 Boş bırakılırsa kalp atışı kapalı kalır; ölüm/envanter/disconnect
@@ -128,6 +128,7 @@ kapanırsa gelen "ajan sustu" uyarısıdır.
 | Durum | Ne yapmalı |
 |---|---|
 | Ajanı durdurmak | `Disable-ScheduledTask -TaskName "KO Monitor"` sonra `Stop-ScheduledTask -TaskName "KO Monitor"`. Sadece durdurursan gözcü 1 dakikada geri başlatır. |
+| Yeniden başlatmak | `Stop-ScheduledTask -TaskName "KO Monitor"; Start-ScheduledTask -TaskName "KO Monitor"` (`Restart-ScheduledTask` bu sürümde yok) |
 | Tekrar açmak | `Enable-ScheduledTask -TaskName "KO Monitor"`; `Start-ScheduledTask -TaskName "KO Monitor"` |
 | Durumu görmek | `Get-ScheduledTaskInfo -TaskName "KO Monitor"` |
 | Kayıtlar | `logs\` klasöründeki en yeni `.log` dosyası |
