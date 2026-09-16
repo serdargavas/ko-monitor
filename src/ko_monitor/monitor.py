@@ -48,6 +48,10 @@ class Monitor:
         self.inventory_seen_at: float | None = None
         self._last_inventory_alert: float | None = None
         self._last_item_alert: dict[EventKind, float] = {}
+        # Kinds _notify actually silenced (not merely throttled) while genie_active was False:
+        # exactly the alerts the user never saw. Re-armed on resume; a kind that was pushed for
+        # real during the off period is NOT in here and keeps its normal repeat window.
+        self._silenced_while_off: set[EventKind] = set()
         # Debounce for the Genie panel: a single misread must not silence the death alert, nor
         # un-silence it. The state changes only after confirm_reads identical readings.
         self._genie_pending: bool | None = None
@@ -133,7 +137,10 @@ class Monitor:
 
     def _notify(self, kind: EventKind) -> bool:
         """Genie off silences farm alerts; 'unknown' never silences anything."""
-        return not (self.genie_active is False and kind in _SILENCED_WHEN_GENIE_OFF)
+        if self.genie_active is False and kind in _SILENCED_WHEN_GENIE_OFF:
+            self._silenced_while_off.add(kind)
+            return False
+        return True
 
     def _update(self, ts: float, r: Readings) -> None:
         self.last_readings = r
@@ -183,12 +190,16 @@ class Monitor:
                 was_off = self.genie_active is False
                 self.genie_active = r.genie_active
                 if was_off and self.genie_active is True:
-                    # Farming resumed: re-arm farm alerts. Otherwise a bag/count that stayed bad
-                    # through the whole silenced stretch keeps its throttle from the silent alert
-                    # and the first real alert after resuming can be swallowed for up to
-                    # item_low_repeat_s / inventory_full_repeat_s.
-                    self._last_item_alert.clear()
-                    self._last_inventory_alert = None
+                    # Farming resumed: re-arm only the alerts that were actually silenced while
+                    # off (the user never saw them) - not every kind, or a real push made just
+                    # before an unrelated genie flap would lose its repeat window and get a
+                    # spurious second push seconds later.
+                    for silenced_kind in self._silenced_while_off:
+                        if silenced_kind == EventKind.INVENTORY_FULL:
+                            self._last_inventory_alert = None
+                        else:
+                            self._last_item_alert.pop(silenced_kind, None)
+                    self._silenced_while_off.clear()
         if r.arrow_count is not None:
             self.arrow_last = r.arrow_count
         if r.mana_count is not None:

@@ -569,6 +569,31 @@ def test_genie_resuming_rearms_a_silenced_inventory_alert():
     assert full and full[0].notify is True
 
 
+def test_genie_flapping_does_not_repush_an_already_pushed_alert():
+    """Round-2 reviewer repro: an alert that was genuinely pushed (genie was True) must keep its
+    normal repeat window across an unrelated genie flap - only alerts actually silenced while off
+    get re-armed on resume."""
+    monitor = Monitor(T)
+    monitor.observe(ok(0.0, genie_active=True))
+    monitor.observe(ok(2.0, genie_active=True))
+    assert monitor.genie_active is True
+    events = monitor.observe(ok(10.0, genie_active=True, chat_events=["inventory_full"]))
+    full = [e for e in events if e.kind == EventKind.INVENTORY_FULL]
+    assert full and full[0].notify is True
+    # Genie flaps off and back on (brief panel misread, or the user pausing the bot) with no
+    # full-bag read while it was off: nothing was actually silenced.
+    monitor.observe(ok(20.0, genie_active=False))
+    monitor.observe(ok(22.0, genie_active=False))
+    assert monitor.genie_active is False
+    monitor.observe(ok(30.0, genie_active=True))
+    monitor.observe(ok(32.0, genie_active=True))
+    assert monitor.genie_active is True
+    # Bag still full, well inside the 600s repeat window: must not push a second time.
+    events = monitor.observe(ok(34.0, genie_active=True, chat_events=["inventory_full"]))
+    full = [e for e in events if e.kind == EventKind.INVENTORY_FULL]
+    assert full == []
+
+
 @pytest.mark.parametrize(
     "kind, silenced",
     [
