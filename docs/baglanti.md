@@ -3,6 +3,17 @@
 Bu dosya, oyun PC'sindeki kurulum bittikten sonra kalan işleri anlatır.
 Diğer bilgisayardan okunmak için yazıldı.
 
+## Bu kurulumun gerçek adresi
+
+**Telefon ve diğer bilgisayar için:** <https://ko-monitor-pc.tail5a4474.ts.net>
+
+Tailscale kurulumu (bölüm 1) ve port yayını (bölüm 2) oyun PC'sinde
+tamamlandı ve HTTPS üzerinden doğrulandı. Aşağıdaki 1. ve 2. bölümler
+referans olarak duruyor; yeniden kurulum gerekirse işe yararlar.
+Kalan iş: telefona Tailscale kurup aynı hesapla (serdargavas@) girmek
+ve adresi Safari'den ana ekrana eklemek (bölüm 3). healthchecks
+(bölüm 5) sonraya bırakıldı.
+
 ## Şu an hazır olanlar (oyun PC'si)
 
 - `config.toml` oluşturuldu (bildirim iletişim adresi: serdargavas@gmail.com).
