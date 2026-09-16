@@ -27,6 +27,11 @@ def test_every_notifying_kind_has_a_title():
         assert not render(Event(kind, 0.0))["title"].startswith(kind.value)
 
 
+def test_item_titles():
+    assert render(Event(EventKind.ARROW_LOW, 0.0, "1200"))["title"] == "🏹 Ok azaldı"
+    assert render(Event(EventKind.MANA_LOW, 0.0, "180"))["title"] == "🧪 Mana potu azaldı"
+
+
 def test_render_test_notification():
     ts = datetime(2026, 9, 15, 12, 0).timestamp()
     message = render(Event(EventKind.TEST, ts, "Bildirimler çalışıyor", notify=True))

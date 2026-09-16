@@ -14,6 +14,15 @@ _BAD_EVENTS = {
 
 _DETAIL_MAX = 120
 
+# Alerts that only matter while the genie farms: when the user plays in person they see these
+# themselves, and a phone that keeps buzzing during manual play gets ignored.
+_SILENCED_WHEN_GENIE_OFF = {
+    EventKind.DEAD,
+    EventKind.INVENTORY_FULL,
+    EventKind.ARROW_LOW,
+    EventKind.MANA_LOW,
+}
+
 
 @dataclass(frozen=True)
 class Observation:
@@ -38,6 +47,7 @@ class Monitor:
         self.genie_active: bool | None = None
         self.inventory_seen_at: float | None = None
         self._last_inventory_alert: float | None = None
+        self._last_item_alert: dict[EventKind, float] = {}
         # Debounce for the Genie panel: a single misread must not silence the death alert, nor
         # un-silence it. The state changes only after confirm_reads identical readings.
         self._genie_pending: bool | None = None
@@ -91,6 +101,7 @@ class Monitor:
             self._blind_since = None
             self._update(obs.ts, obs.readings)
             events.extend(self._inventory_events(obs.ts, obs.readings))
+            events.extend(self._item_events(obs.ts, obs.readings))
         elif self._blind_since is None:
             self._blind_since = obs.ts
             # "Uninterrupted" timers must not bridge a blind gap. A timer whose state is
@@ -117,8 +128,12 @@ class Monitor:
                 detail = self.zone_last or ""
                 if by_dialog and self._dialog_text_last is not None:
                     detail = self._dialog_text_last[:_DETAIL_MAX]
-                events.append(Event(_BAD_EVENTS[target], obs.ts, detail, notify=True))
+                events.append(Event(_BAD_EVENTS[target], obs.ts, detail, notify=self._notify(_BAD_EVENTS[target])))
         return events
+
+    def _notify(self, kind: EventKind) -> bool:
+        """Genie off silences farm alerts; 'unknown' never silences anything."""
+        return not (self.genie_active is False and kind in _SILENCED_WHEN_GENIE_OFF)
 
     def _update(self, ts: float, r: Readings) -> None:
         self.last_readings = r
@@ -179,6 +194,24 @@ class Monitor:
                 self.slots_used_last = r.slots_used
                 self.slots_total_last = r.slots_total
 
+    def _item_events(self, ts: float, r: Readings) -> list[Event]:
+        events = []
+        for kind, count, limit in (
+            (EventKind.ARROW_LOW, r.arrow_count, self._t.arrow_low),
+            (EventKind.MANA_LOW, r.mana_count, self._t.mana_low),
+        ):
+            if count is None:
+                continue
+            if count >= limit:
+                self._last_item_alert.pop(kind, None)  # refilled: the next drop alerts again
+                continue
+            last = self._last_item_alert.get(kind)
+            if last is not None and ts - last < self._t.item_low_repeat_s:
+                continue
+            self._last_item_alert[kind] = ts
+            events.append(Event(kind, ts, str(count), notify=self._notify(kind)))
+        return events
+
     def _inventory_events(self, ts: float, r: Readings) -> list[Event]:
         full_by_slots = bool(r.inventory_open) and r.slots_used is not None and r.slots_used == r.slots_total
         if "inventory_full" not in r.chat_events and not full_by_slots:
@@ -187,7 +220,7 @@ class Monitor:
         if last is not None and ts - last < self._t.inventory_full_repeat_s:
             return []
         self._last_inventory_alert = ts
-        return [Event(EventKind.INVENTORY_FULL, ts, self.zone_last or "", notify=True)]
+        return [Event(EventKind.INVENTORY_FULL, ts, self.zone_last or "", notify=self._notify(EventKind.INVENTORY_FULL))]
 
     def _disconnect_cause(self, ts: float) -> str | None:
         """'dialog' (center dialog text), 'other' (login screen, template, HUD missing) or None."""

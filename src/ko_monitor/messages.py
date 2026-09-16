@@ -7,6 +7,8 @@ from ko_monitor.models import Event, EventKind
 TITLES = {
     EventKind.DEAD: "💀 Karakter öldü",
     EventKind.INVENTORY_FULL: "🎒 Envanter dolu",
+    EventKind.ARROW_LOW: "🏹 Ok azaldı",
+    EventKind.MANA_LOW: "🧪 Mana potu azaldı",
     EventKind.DISCONNECTED: "🔌 Sunucudan düştün",
     EventKind.GAME_CLOSED: "❌ Oyun kapandı",
     EventKind.FROZEN: "🧊 Oyun ekranı dondu",

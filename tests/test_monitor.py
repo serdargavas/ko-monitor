@@ -447,3 +447,104 @@ def test_blind_gap_keeps_unknown_dialog_timer_only_for_dialog_disconnect(m):
     events = m.observe(ok(70, dialog_text=NOTICE))
     assert kinds(events) == [(EventKind.DISCONNECTED, True)]
     assert events[0].detail == NOTICE
+
+
+def test_low_arrows_alert_once(m):
+    events = m.observe(ok(10.0, **dict(inventory_open=True, arrow_count=900, genie_active=True)))
+    assert (EventKind.ARROW_LOW, True) in kinds(events)
+    # Same tick conditions a second later: no repeat inside item_low_repeat_s.
+    again = m.observe(ok(12.0, **dict(inventory_open=True, arrow_count=880, genie_active=True)))
+    assert EventKind.ARROW_LOW not in [e.kind for e in again]
+
+
+def test_low_arrows_alert_again_after_refill(m):
+    m.observe(ok(10.0, **dict(inventory_open=True, arrow_count=900, genie_active=True)))
+    m.observe(ok(20.0, **dict(inventory_open=True, arrow_count=9000, genie_active=True)))
+    events = m.observe(ok(30.0, **dict(inventory_open=True, arrow_count=800, genie_active=True)))
+    assert (EventKind.ARROW_LOW, True) in kinds(events)
+
+
+def test_low_mana_alert(m):
+    events = m.observe(ok(10.0, **dict(inventory_open=True, mana_count=150, genie_active=True)))
+    assert (EventKind.MANA_LOW, True) in kinds(events)
+
+
+def test_item_alerts_need_a_reading(m):
+    events = m.observe(ok(10.0, **dict(inventory_open=False, arrow_count=None, genie_active=True)))
+    assert [e.kind for e in events if e.kind in (EventKind.ARROW_LOW, EventKind.MANA_LOW)] == []
+
+
+def test_death_is_recorded_but_not_notified_while_genie_is_off():
+    monitor = Monitor(T)
+    monitor.observe(ok(0.0, genie_active=False))
+    monitor.observe(ok(2.0, hp=0, genie_active=False))
+    events = monitor.observe(ok(4.0, hp=0, genie_active=False))
+    dead = [e for e in events if e.kind == EventKind.DEAD]
+    assert dead and dead[0].notify is False
+
+
+def test_disconnect_is_notified_even_while_genie_is_off():
+    monitor = Monitor(T)
+    monitor.observe(ok(0.0, genie_active=False))
+    monitor.observe(ok(2.0, login_screen=True, genie_active=False, **NO_HUD))
+    events = monitor.observe(ok(4.0, login_screen=True, genie_active=False, **NO_HUD))
+    disconnected = [e for e in events if e.kind == EventKind.DISCONNECTED]
+    assert disconnected and disconnected[0].notify is True
+
+
+def test_unknown_genie_state_silences_nothing():
+    monitor = Monitor(T)
+    monitor.observe(ok(0.0, genie_active=None))
+    monitor.observe(ok(2.0, hp=0, genie_active=None))
+    events = monitor.observe(ok(4.0, hp=0, genie_active=None))
+    dead = [e for e in events if e.kind == EventKind.DEAD]
+    assert dead and dead[0].notify is True
+
+
+def test_low_arrow_alert_is_silent_while_genie_is_off():
+    monitor = Monitor(T)
+    monitor.observe(ok(0.0, genie_active=False))
+    events = monitor.observe(ok(10.0, **dict(inventory_open=True, arrow_count=900, genie_active=False)))
+    low_events = [e for e in events if e.kind == EventKind.ARROW_LOW]
+    assert low_events and low_events[0].notify is False
+
+
+# --- Genie debounce (Monitor._update, Thresholds.confirm_reads) ---
+# genie_active is the only signal that silences farm alerts, so a wrong debounce here means a
+# real death goes unreported (or a manual-play death buzzes the phone for a "farm problem").
+
+
+def test_genie_first_reading_does_not_confirm(m):
+    assert m.genie_active is None
+    m.observe(ok(2.0, genie_active=True))
+    assert m.genie_active is None
+
+
+def test_genie_alternating_readings_never_confirm(m):
+    for i, value in enumerate([True, False, True, False, True, False]):
+        m.observe(ok(2.0 + i * 2, genie_active=value))
+    assert m.genie_active is None
+
+
+def test_genie_none_reading_resets_streak_without_clearing_confirmed(m):
+    m.observe(ok(2.0, genie_active=True))
+    m.observe(ok(4.0, genie_active=True))
+    assert m.genie_active is True
+    m.observe(ok(6.0, genie_active=False))
+    assert m.genie_active is True
+    m.observe(ok(8.0, genie_active=None))
+    assert m.genie_active is True
+    # Only one consecutive False read since the None reset: not enough to confirm yet.
+    m.observe(ok(10.0, genie_active=False))
+    assert m.genie_active is True
+    # Second consecutive False read since the reset: now confirmed.
+    m.observe(ok(12.0, genie_active=False))
+    assert m.genie_active is False
+
+
+def test_genie_single_opposite_reading_does_not_flip_confirmed(m):
+    m.observe(ok(2.0, genie_active=True))
+    m.observe(ok(4.0, genie_active=True))
+    assert m.genie_active is True
+    m.observe(ok(6.0, genie_active=False))
+    assert m.genie_active is True
