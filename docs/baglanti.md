@@ -144,3 +144,36 @@ kapanırsa gelen "ajan sustu" uyarısıdır.
   O zamana kadar tanınmayan pencere 30 saniye açık kalırsa "disconnect" sayılır.
 - **"Envanter dolu" chat mesajı:** örnek yok. Envanter doluluğu şu an
   envanter penceresi açıkken siyah (boş) kutucuk sayısından anlaşılıyor.
+
+## 8. Sanal ekran (monitörler kapalıyken izleyebilmek için)
+
+**Sorun:** Windows'ta hiç aktif ekran kalmazsa (bütün monitörler fiziksel
+olarak kapalı ve bağlı bir uzak oturum da yoksa) masaüstü çizilmeyi
+bırakır. Görüntü yakalama son kareyi vermeye devam eder; oyun arka planda
+sorunsuz çalışsa bile ekran donmuş görünür. 16.09.2026 gecesi tam olarak bu
+oldu: karakter 6 saat kesintisiz farm yaptı, biz donuk kare gördük.
+
+**Çözüm:** kalıcı bir sanal ekran sürücüsü.
+
+```powershell
+winget install --id VirtualDrivers.Virtual-Display-Driver
+```
+
+winget yalnızca dosyaları açar; kurulumu şuradaki **"VDD Control.exe"**
+yönetici olarak çalıştırılıp *Install Driver* denerek yapılır:
+
+```
+%LOCALAPPDATA%\Microsoft\WinGet\Packages\VirtualDrivers.Virtual-Display-Driver_Microsoft.Winget.Source_8wekyb3d8bbwe
+```
+
+Kurulum sonrası doğrulandı (16.09.2026): TeamViewer kapalı ve monitörler
+kapalıyken 20 dakika boyunca kesintisiz okuma, para her dakika arttı, tek
+bir "kör/donmuş" olayı düşmedi, telefondan canlı izleme çalıştı.
+
+**Önemli:** Bu sürücüyü kaldırma. Kaldırırsan monitörler kapalıyken izleme
+yine kör kalır (oyun yine de çalışmaya devam eder).
+
+Çözünürlük notu: sanal ekran 2560x1440 çalışıyor, üzerine %125 ölçekleme
+biniyor — masaüstü mantıksal olarak 2048x1152 görünür ama oyun penceresi ve
+yakalanan kareler fiziksel 2560x1440 kalır, yani `calibration.json`
+koordinatları geçerliliğini korur. Sanal ekranın çözünürlüğünü değiştirme.
