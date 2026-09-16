@@ -134,6 +134,7 @@ kapanırsa gelen "ajan sustu" uyarısıdır.
 | "port 8765 kullanımda" | Zaten bir kopya çalışıyor demektir; beklenen davranış |
 | Telefonda "Invalid host header" (400) | `tailscale serve` Host başlığını değiştiriyor demektir; bana bildir, izin listesini ayarlarım |
 | Canlı görüntü takılıyorsa | Ayarlar'dan kaliteyi `low` veya `medium` yap |
+| "🙈 İzleme yapılamıyor" bildirimi | Ekran kapalı demektir, oyun çalışmaya devam ediyor. **Oyunu kapatma.** Aşağıya bak. |
 | Oyun kapalıyken | Durum "Oyun kapalı" görünür; bu normaldir |
 
 ## 7. Henüz veri bekleyen iki şey
