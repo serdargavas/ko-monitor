@@ -18,6 +18,7 @@ class CaptureStatus(StrEnum):
     MINIMIZED = "minimized"
     NOT_FOUND = "not_found"
     BLACK = "black"
+    NO_DISPLAY = "no_display"
 
 
 class EventKind(StrEnum):

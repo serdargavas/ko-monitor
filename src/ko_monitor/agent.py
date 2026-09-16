@@ -11,6 +11,7 @@ import numpy as np
 
 from ko_monitor.capture import FrameSource, ReplaySource
 from ko_monitor.config import Config
+from ko_monitor.display import has_active_display
 from ko_monitor.heartbeat import Heartbeat
 from ko_monitor.models import CaptureStatus, Event, EventKind
 from ko_monitor.monitor import Monitor, Observation
@@ -39,6 +40,7 @@ class Agent:
         incident_dir: Path | None = None,
         incident_limit: int = 50,
         board: StatusBoard | None = None,
+        has_display: Callable[[], bool] = has_active_display,
     ):
         self._cfg = cfg
         self._incident_dir = incident_dir if incident_dir is not None else cfg.data_dir / "incidents"
@@ -53,6 +55,7 @@ class Agent:
         self._now = now
         self._monotonic = monotonic
         self._board = board
+        self._has_display = has_display
         self._last_snapshot = float("-inf")
 
     def tick(self) -> float:
@@ -61,11 +64,18 @@ class Agent:
         running = self._process_running()
         frame = None
         if running:
-            try:
-                status, frame = self._source.latest()
-            except Exception:
-                log.exception("capture failed")
-                status, frame = CaptureStatus.NOT_FOUND, None
+            if not self._has_display():
+                # Every monitor is off and no remote session supplies a virtual one, so Windows
+                # stopped composing the desktop and capture would keep handing out the last frame
+                # it saw. Analysing that stale picture confirms FROZEN while the game is in fact
+                # still running, which is worse than admitting we cannot see.
+                status, frame = CaptureStatus.NO_DISPLAY, None
+            else:
+                try:
+                    status, frame = self._source.latest()
+                except Exception:
+                    log.exception("capture failed")
+                    status, frame = CaptureStatus.NOT_FOUND, None
             readings = None
             if status == CaptureStatus.OK and frame is not None:
                 try:

@@ -75,6 +75,9 @@ class FlakySource(FakeSource):
 
 class Harness:
     def __init__(self, tmp_path: Path, notify_result=True, source=None, **agent_kwargs):
+        # Never ask the real Windows display list: these tests must not depend on whether the
+        # machine running them happens to have a monitor switched on.
+        agent_kwargs.setdefault("has_display", lambda: True)
         self.cfg = Config(data_dir=tmp_path)
         self.storage = Storage(tmp_path / "db.sqlite3")
         self.detector = FakeDetector()
@@ -266,6 +269,7 @@ def test_tick_publishes_status_to_the_board(tmp_path):
     agent = Agent(
         Config(data_dir=tmp_path), storage, FakeSource(), FakeDetector(), Monitor(Config().thresholds),
         FakeNotifier(), FakeHeartbeat(), lambda: running["value"], now=lambda: 42.0, board=board,
+        has_display=lambda: True,
     )
     agent.tick()
     status = board.current()
@@ -288,7 +292,53 @@ def test_capture_failure_is_published_as_not_found(tmp_path):
     agent = Agent(
         Config(data_dir=tmp_path), storage, source, FakeDetector(), Monitor(Config().thresholds),
         FakeNotifier(), FakeHeartbeat(), lambda: True, now=lambda: 7.0, board=board,
+        has_display=lambda: True,
     )
     agent.tick()
     assert (board.current().capture, board.current().readings) == ("not_found", None)
     storage.close()
+
+
+class CountingSource(FakeSource):
+    """Counts capture attempts: with no display there is nothing worth capturing."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def latest(self):
+        self.calls += 1
+        return super().latest()
+
+
+def test_no_display_is_published_and_capture_is_not_attempted(tmp_path):
+    board = StatusBoard()
+    source = CountingSource()
+    h = Harness(tmp_path, source=source, has_display=lambda: False, board=board)
+    h.tick_at(0, alive())
+    assert board.current().capture == "no_display"
+    assert board.current().readings is None
+    assert source.calls == 0
+    h.storage.close()
+
+
+def test_no_display_reports_blind_and_never_frozen(tmp_path):
+    # The night this fixed: monitors off, the picture repeats its last frame for hours while the
+    # game keeps farming. A "frozen" push made the user kill a healthy session.
+    h = Harness(tmp_path, has_display=lambda: False)
+    for ts in range(0, 420, 2):
+        h.tick_at(ts, alive())
+    kinds = [kind for kind, _ in h.kinds()]
+    assert "blind" in kinds
+    assert "frozen" not in kinds
+    h.storage.close()
+
+
+def test_a_display_coming_back_restores_normal_reading(tmp_path):
+    display = {"on": False}
+    h = Harness(tmp_path, has_display=lambda: display["on"])
+    h.tick_at(0, alive())
+    assert h.agent.monitor.last_readings is None
+    display["on"] = True
+    h.tick_at(2, alive(hp=1234))
+    assert h.agent.monitor.last_readings.hp == 1234
+    h.storage.close()
