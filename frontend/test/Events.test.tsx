@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Events } from "../src/screens/Events";
 import { DAY_S } from "../src/timeline";
-import { eventItem, income, snapshot, stubFetch } from "./fakes";
+import { eventItem, dailyIncome, income, snapshot, stubFetch } from "./fakes";
 
 describe("Events screen", () => {
   it("lists events and draws the 24 h timeline", async () => {
@@ -10,7 +10,7 @@ describe("Events screen", () => {
     const fetchMock = stubFetch({
       "/api/events": [eventItem(2, "game_started", now - 120), eventItem(1, "inventory_full", now - 600, "28/28")],
       "/api/snapshots": [snapshot(now - 600, "alive"), snapshot(now - 540, "dead")],
-      "/api/income?hours=24": income(),
+      "/api/income?hours=24": income(), "/api/income/daily?days=14": dailyIncome(),
     });
     render(<Events />);
     expect(await screen.findByText("▶️ Oyun açıldı")).toBeTruthy();
@@ -28,7 +28,7 @@ describe("Events screen", () => {
   });
 
   it("shows the income chart above the event list", async () => {
-    stubFetch({ "/api/events": [], "/api/snapshots": [], "/api/income?hours=24": income() });
+    stubFetch({ "/api/events": [], "/api/snapshots": [], "/api/income?hours=24": income(), "/api/income/daily?days=14": dailyIncome() });
     const { container } = render(<Events />);
     await screen.findByText(/Kazanç/);
     const cards = [...container.querySelectorAll(".card")];
@@ -40,12 +40,13 @@ describe("Events screen", () => {
   });
 
   it("reloads on Yenile and shows an empty list", async () => {
-    const fetchMock = stubFetch({ "/api/events": [], "/api/snapshots": [], "/api/income?hours=24": income() });
+    const fetchMock = stubFetch({ "/api/events": [], "/api/snapshots": [], "/api/income?hours=24": income(), "/api/income/daily?days=14": dailyIncome() });
     render(<Events />);
     expect(await screen.findByText("Henüz olay yok.")).toBeTruthy();
     const button = screen.getByRole("button", { name: "Yenile" }) as HTMLButtonElement;
     await waitFor(() => expect(button.disabled).toBe(false));
     fireEvent.click(button);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+    // Four endpoints per load: events, snapshots, hourly income, daily income.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(8));
   });
 });

@@ -264,3 +264,15 @@ def test_income_endpoint(env):
 def test_income_hours_is_bounded(env):
     assert env.client.get("/api/income?hours=0").status_code == 422
     assert env.client.get("/api/income?hours=721").status_code == 422
+
+
+def test_daily_income_endpoint(env):
+    body = env.client.get("/api/income/daily?days=3").json()
+    assert len(body["days"]) == 3
+    assert {"start", "delta", "samples"} <= set(body["days"][0])
+    assert "avg_7d" in body and "avg_all" in body
+
+
+def test_daily_income_days_is_bounded(env):
+    assert env.client.get("/api/income/daily?days=0").status_code == 422
+    assert env.client.get("/api/income/daily?days=31").status_code == 422

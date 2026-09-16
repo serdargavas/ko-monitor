@@ -1,4 +1,6 @@
-from ko_monitor.income import hourly_income
+from datetime import datetime
+
+from ko_monitor.income import daily_income, day_starts, hourly_income
 from ko_monitor.models import Snapshot, State
 
 HOUR = 3600.0
@@ -80,3 +82,58 @@ def test_inventory_seen_in_an_earlier_hour_does_not_count():
     snaps = [stale(HOUR * 12 + 10, 900, HOUR * 11 + 10), snap(HOUR * 12 + 20, 1000)]
     out = hourly_income(snaps, now=HOUR * 12 + 30, hours=1)
     assert out["hours"][0] == {"start": HOUR * 12, "delta": None, "samples": 1}
+
+
+def local(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> float:
+    return datetime(year, month, day, hour, minute).timestamp()
+
+
+def test_day_starts_are_local_midnights():
+    starts = day_starts(local(2026, 9, 16, 10, 30), days=3)
+    moments = [datetime.fromtimestamp(s) for s in starts]
+    assert [m.day for m in moments] == [14, 15, 16]
+    assert all((m.hour, m.minute, m.second) == (0, 0, 0) for m in moments)
+
+
+def test_a_day_runs_from_local_midnight_not_from_a_86400_boundary():
+    # Bucketing by 86400 s would put this user's boundary at 03:00 and split a night's farming.
+    snaps = [
+        snap(local(2026, 9, 15, 23, 0), 1000),
+        snap(local(2026, 9, 15, 23, 30), 1500),
+        snap(local(2026, 9, 16, 0, 10), 4000),
+        snap(local(2026, 9, 16, 1, 0), 4700),
+    ]
+    out = daily_income(snaps, now=local(2026, 9, 16, 2, 0), days=2)
+    assert [d["delta"] for d in out["days"]] == [500, 700]
+    assert out["days"][1]["start"] == local(2026, 9, 16)
+
+
+def test_the_running_day_is_left_out_of_the_averages():
+    # Today is two hours old; counting it would drag the daily average down every morning.
+    snaps = [
+        snap(local(2026, 9, 14, 12, 0), 0),
+        snap(local(2026, 9, 14, 20, 0), 10_000),
+        snap(local(2026, 9, 15, 12, 0), 0),
+        snap(local(2026, 9, 15, 20, 0), 20_000),
+        snap(local(2026, 9, 16, 1, 0), 0),
+        snap(local(2026, 9, 16, 1, 30), 500),
+    ]
+    out = daily_income(snaps, now=local(2026, 9, 16, 2, 0), days=3)
+    assert [d["delta"] for d in out["days"]] == [10_000, 20_000, 500]
+    assert out["avg_all"] == 15_000
+    assert out["avg_7d"] == 15_000
+
+
+def test_a_day_without_readings_is_null():
+    snaps = [snap(local(2026, 9, 16, 1, 0), 100), snap(local(2026, 9, 16, 1, 30), 900)]
+    out = daily_income(snaps, now=local(2026, 9, 16, 2, 0), days=3)
+    assert [d["delta"] for d in out["days"]] == [None, None, 800]
+    assert out["avg_all"] is None  # only the running day had data, and it does not count
+
+
+def test_daily_income_ignores_stale_money_readings():
+    fresh = Snapshot(local(2026, 9, 15, 12, 0), State.ALIVE, 1, 1, "z", 1000, 1, 28, local(2026, 9, 15, 12, 0))
+    stale = Snapshot(local(2026, 9, 15, 18, 0), State.ALIVE, 1, 1, "z", 1000, 1, 28, local(2026, 9, 14, 23, 0))
+    out = daily_income([fresh, stale], now=local(2026, 9, 15, 20, 0), days=1)
+    assert out["days"][0]["samples"] == 1
+    assert out["days"][0]["delta"] is None

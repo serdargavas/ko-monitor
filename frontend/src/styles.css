@@ -120,3 +120,7 @@ nav.tabs a.active { color: var(--accent); }
 .badge.genie { background: var(--accent); color: #0b0d11; }
 /* The screen heading and its Refresh button need air before the first card. */
 .row.page-head { margin-bottom: 14px; }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 0.85rem; padding: 4px 12px; cursor: pointer; }
+.seg button.on { background: var(--accent); color: #0b0d11; font-weight: 700; }

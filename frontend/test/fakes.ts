@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { AgentStatus, EventItem, Income, Snapshot, State } from "../src/types";
+import type { AgentStatus, DailyIncome, EventItem, Income, Snapshot, State } from "../src/types";
 
 /** Stands in for the browser WebSocket; tests drive it with receive() and serverClose(). */
 export class FakeWebSocket {
@@ -132,4 +132,17 @@ export function eventItem(id: number, kind: string, ts: number, detail = ""): Ev
 
 export function income(overrides: Partial<Income> = {}): Income {
   return { hours: [{ start: 3600, delta: 1000, samples: 60 }], avg_1h: 1000, avg_6h: 1000, avg_24h: 1000, ...overrides };
+}
+
+export function dailyIncome(overrides: Partial<DailyIncome> = {}): DailyIncome {
+  return {
+    days: [
+      { start: 86400 * 20, delta: 40_000_000, samples: 400 },
+      { start: 86400 * 21, delta: 60_000_000, samples: 500 },
+      { start: 86400 * 22, delta: 5_000_000, samples: 60 },
+    ],
+    avg_7d: 50_000_000,
+    avg_all: 50_000_000,
+    ...overrides,
+  };
 }

@@ -74,17 +74,28 @@ export type StreamStatus = "ok" | "minimized" | "not_found" | "black";
 
 export type Quality = "low" | "medium" | "high";
 
-/** One hour of GET /api/income; delta null = no reading in that hour. */
-export interface IncomeHour {
+/** One bucket of GET /api/income (an hour) or /api/income/daily (a local day).
+ *  delta null = no fresh reading in that bucket, which is not the same as zero income. */
+export interface IncomeBucket {
   start: number;
   delta: number | null;
   samples: number;
 }
 
+/** @deprecated kept so older imports keep compiling; buckets are hours or days now. */
+export type IncomeHour = IncomeBucket;
+
 /** GET /api/income?hours=N (oldest hour first). */
 export interface Income {
-  hours: IncomeHour[];
+  hours: IncomeBucket[];
   avg_1h: number | null;
   avg_6h: number | null;
   avg_24h: number | null;
+}
+
+/** GET /api/income/daily?days=N (oldest day first; the last day is still running). */
+export interface DailyIncome {
+  days: IncomeBucket[];
+  avg_7d: number | null;
+  avg_all: number | null;
 }

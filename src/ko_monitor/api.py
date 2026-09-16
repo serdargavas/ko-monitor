@@ -15,7 +15,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ko_monitor.capture import FrameSource
 from ko_monitor.config import PROJECT_ROOT
-from ko_monitor.income import HOUR_S, hourly_income
+from ko_monitor.income import HOUR_S, daily_income, day_starts, hourly_income
 from ko_monitor.models import Event, EventKind
 from ko_monitor.notifier import Notifier
 from ko_monitor.origin import origin_allowed
@@ -139,6 +139,15 @@ def create_app(
         current = now()
         start = (current // HOUR_S) * HOUR_S - HOUR_S * (hours - 1)
         return hourly_income(storage.snapshots_since(start), current, hours, income_max_jump)
+
+    @app.get("/api/income/daily")
+    def get_daily_income(days: int = Query(14, ge=1, le=30)):
+        current = now()
+        # Days run local midnight to local midnight, so the fetch window starts at the oldest
+        # midnight rather than a multiple of 86400 seconds.
+        return daily_income(
+            storage.snapshots_since(day_starts(current, days)[0]), current, days, income_max_jump
+        )
 
     @app.get("/api/push/vapid-key")
     def get_vapid_key():

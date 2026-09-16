@@ -32,3 +32,8 @@ export function unreachableText(error: Error): string {
 export function numberText(value: number | null | undefined): string {
   return value === null || value === undefined ? "—" : Number(value).toLocaleString("tr-TR");
 }
+
+/** Unix seconds → "16 Eylül" in the phone's time zone. */
+export function dayText(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
+}
