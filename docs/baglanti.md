@@ -10,9 +10,13 @@ Diğer bilgisayardan okunmak için yazıldı.
 Tailscale kurulumu (bölüm 1) ve port yayını (bölüm 2) oyun PC'sinde
 tamamlandı ve HTTPS üzerinden doğrulandı. Aşağıdaki 1. ve 2. bölümler
 referans olarak duruyor; yeniden kurulum gerekirse işe yararlar.
-Kalan iş: telefona Tailscale kurup aynı hesapla (serdargavas@) girmek
-ve adresi Safari'den ana ekrana eklemek (bölüm 3). healthchecks
-(bölüm 5) sonraya bırakıldı.
+Telefon kurulumu (bölüm 3) yapıldı ve çalıştığı doğrulandı.
+healthchecks kalp atışı (bölüm 5) da bağlandı: check adı **KO Monitor**,
+durum up, uyarılar hesabın e-posta adresine gidiyor (test edildi).
+
+Kurulumda geriye tek bir doğrulama kaldı: oyun normal şekilde
+kapatıldığında kalp atışının duraklaması — yani oyun oynanmayan
+gecelerde boşuna "ajan sustu" maili gelmemesi.
 
 ## Şu an hazır olanlar (oyun PC'si)
 
