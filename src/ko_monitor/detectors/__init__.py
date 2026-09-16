@@ -12,8 +12,10 @@ from ko_monitor.calibration import Calibration
 from ko_monitor.detectors.chat import ChatTracker, read_chat
 from ko_monitor.detectors.dialog import DialogCache, read_dialog
 from ko_monitor.detectors.frame_diff import FrameDiff
+from ko_monitor.detectors.genie import read_genie
 from ko_monitor.detectors.hud import read_hud
 from ko_monitor.detectors.inventory import read_inventory
+from ko_monitor.detectors.items import read_items
 from ko_monitor.detectors.templates import template_present
 from ko_monitor.models import Readings
 from ko_monitor.ocr import Ocr
@@ -87,6 +89,9 @@ class Detector:
         inventory_open, money, slots_used, slots_total = read_inventory(
             frame, self._calib.inventory, self._ocr
         )
+        arrow_count, mana_count = read_items(
+            frame, inventory_open, self._calib.inventory, self._calib.items, self._ocr
+        )
         # One template match per tick; the rec-only OCR of the text lines runs only while the
         # dialog frame is present, and is skipped while the text pixels are unchanged.
         dialog_text, dialog_revive, dialog_disconnect = read_dialog(
@@ -109,5 +114,8 @@ class Detector:
             money=money,
             slots_used=slots_used,
             slots_total=slots_total,
+            arrow_count=arrow_count,
+            mana_count=mana_count,
+            genie_active=read_genie(frame, self._calib.genie),
             frame_diff=self._diff.update(frame),
         )

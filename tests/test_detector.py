@@ -123,3 +123,19 @@ def test_dialog_flags_combine_template_and_dialog_text(calib, monkeypatch, templ
     width, height = calib.resolution
     r = Detector(calib, None).detect(np.zeros((height, width, 3), np.uint8))
     assert (r.revive_dialog, r.disconnect_dialog, r.dialog_text) == (expected, expected, "Some text")
+
+
+@pytest.mark.ocr
+def test_detector_reports_genie_and_item_counts(calib, ocr):
+    detector = Detector(calib, ocr)
+    readings = detector.detect(cv2.imread(str(SAMPLES / "genie_on" / "20260916-153935.png")))
+    assert readings.genie_active is True
+    assert readings.arrow_count == 6380
+    assert readings.mana_count == 4150
+
+
+@pytest.mark.ocr
+def test_detector_reports_stopped_genie(calib, ocr):
+    detector = Detector(calib, ocr)
+    readings = detector.detect(cv2.imread(str(SAMPLES / "genie_off" / "20260916-154450.png")))
+    assert readings.genie_active is False

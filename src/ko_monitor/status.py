@@ -26,6 +26,9 @@ class AgentStatus:
     money_last: int | None = None
     slots_used_last: int | None = None
     slots_total_last: int | None = None
+    arrow_last: int | None = None
+    mana_last: int | None = None
+    genie_active: bool | None = None
     inventory_seen_at: float | None = None
 
     def to_dict(self) -> dict:
@@ -60,6 +63,9 @@ def status_from(
         money_last=_plain(monitor.money_last),
         slots_used_last=_plain(monitor.slots_used_last),
         slots_total_last=_plain(monitor.slots_total_last),
+        arrow_last=_plain(monitor.arrow_last),
+        mana_last=_plain(monitor.mana_last),
+        genie_active=_plain(monitor.genie_active),
         inventory_seen_at=monitor.inventory_seen_at,
     )
 

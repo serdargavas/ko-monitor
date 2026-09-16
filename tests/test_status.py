@@ -89,3 +89,19 @@ def test_concurrent_publish_and_read_always_sees_whole_statuses():
         thread.join()
     assert errors == []
     assert board.current().updated_at == 19_999.0
+
+
+def test_status_exposes_genie_and_item_counts():
+    monitor = Monitor(Thresholds())
+    reading = Readings(
+        hud_visible=True, hp=100, hp_max=100, zone="Ronark Land",
+        inventory_open=True, arrow_count=1200, mana_count=250, genie_active=True,
+    )
+    # The Genie state is debounced (confirm_reads identical readings): a single misread must
+    # not silence the death alert, nor un-silence it. Observe the same reading twice.
+    monitor.observe(Observation(1.0, True, CaptureStatus.OK, reading))
+    monitor.observe(Observation(2.0, True, CaptureStatus.OK, reading))
+    status = status_from(monitor, 2.0, True, CaptureStatus.OK).to_dict()
+    assert status["arrow_last"] == 1200
+    assert status["mana_last"] == 250
+    assert status["genie_active"] is True

@@ -33,8 +33,15 @@ class Monitor:
         self.money_last: int | None = None
         self.slots_used_last: int | None = None
         self.slots_total_last: int | None = None
+        self.arrow_last: int | None = None
+        self.mana_last: int | None = None
+        self.genie_active: bool | None = None
         self.inventory_seen_at: float | None = None
         self._last_inventory_alert: float | None = None
+        # Debounce for the Genie panel: a single misread must not silence the death alert, nor
+        # un-silence it. The state changes only after confirm_reads identical readings.
+        self._genie_pending: bool | None = None
+        self._genie_reads = 0
         # Startup grace: launcher/login/character select show no HUD, so bad states
         # are not evaluated until the HUD is first seen or startup_grace_s passes.
         self._started_at: float | None = None
@@ -149,6 +156,20 @@ class Monitor:
                     self._still_since = ts
             else:
                 self._still_since = None
+
+        if r.genie_active is None:
+            self._genie_pending, self._genie_reads = None, 0
+        else:
+            if r.genie_active == self._genie_pending:
+                self._genie_reads += 1
+            else:
+                self._genie_pending, self._genie_reads = r.genie_active, 1
+            if self._genie_reads >= self._t.confirm_reads:
+                self.genie_active = r.genie_active
+        if r.arrow_count is not None:
+            self.arrow_last = r.arrow_count
+        if r.mana_count is not None:
+            self.mana_last = r.mana_count
 
         if r.inventory_open:
             self.inventory_seen_at = ts

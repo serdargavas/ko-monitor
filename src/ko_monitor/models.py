@@ -50,6 +50,9 @@ class Readings:
     money: int | None = None
     slots_used: int | None = None
     slots_total: int | None = None
+    arrow_count: int | None = None
+    mana_count: int | None = None
+    genie_active: bool | None = None  # None = the Genie panel could not be read
     frame_diff: float | None = None
 
 
