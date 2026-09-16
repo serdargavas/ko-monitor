@@ -2,7 +2,7 @@ import pytest
 
 from ko_monitor.config import Thresholds
 from ko_monitor.models import CaptureStatus, EventKind, Readings, State
-from ko_monitor.monitor import Monitor, Observation
+from ko_monitor.monitor import _SILENCED_WHEN_GENIE_OFF, Monitor, Observation
 
 T = Thresholds()
 
@@ -548,3 +548,57 @@ def test_genie_single_opposite_reading_does_not_flip_confirmed(m):
     assert m.genie_active is True
     m.observe(ok(6.0, genie_active=False))
     assert m.genie_active is True
+
+
+def test_genie_resuming_rearms_a_silenced_inventory_alert():
+    """Reviewer repro: a silenced INVENTORY_FULL arms the 600s throttle same as a pushed one, so
+    without a re-arm on farming resuming, the first real alert after resuming can be swallowed."""
+    monitor = Monitor(T)
+    monitor.observe(ok(0.0, genie_active=False))
+    events = monitor.observe(ok(10.0, genie_active=False, chat_events=["inventory_full"]))
+    full = [e for e in events if e.kind == EventKind.INVENTORY_FULL]
+    assert full and full[0].notify is False
+    # Genie confirmed back on two ticks later (no full-bag read in between the confirming reads).
+    monitor.observe(ok(30.0, genie_active=True))
+    monitor.observe(ok(32.0, genie_active=True))
+    assert monitor.genie_active is True
+    # Bag is still full, only 8s after the silenced alert: must be reported now that farming
+    # resumed, not swallowed by the throttle that was armed while the alert was silenced.
+    events = monitor.observe(ok(40.0, genie_active=True, chat_events=["inventory_full"]))
+    full = [e for e in events if e.kind == EventKind.INVENTORY_FULL]
+    assert full and full[0].notify is True
+
+
+@pytest.mark.parametrize(
+    "kind, silenced",
+    [
+        (EventKind.DEAD, True),
+        (EventKind.INVENTORY_FULL, True),
+        (EventKind.ARROW_LOW, True),
+        (EventKind.MANA_LOW, True),
+        (EventKind.DISCONNECTED, False),
+        (EventKind.FROZEN, False),
+        (EventKind.BLIND, False),
+        (EventKind.GAME_CLOSED, False),
+        (EventKind.GAME_STARTED, False),
+        (EventKind.RECOVERED, False),
+        (EventKind.TEST, False),
+    ],
+)
+def test_silenced_when_genie_off_membership(kind, silenced):
+    """Pins the exact membership of _SILENCED_WHEN_GENIE_OFF: e.g. BLIND sneaking in by typo
+    would pass every other test while making the monitor go blind in silence."""
+    assert (kind in _SILENCED_WHEN_GENIE_OFF) is silenced
+
+
+def test_arrow_count_none_does_not_rearm_the_alert(m):
+    m.observe(ok(10.0, inventory_open=True, arrow_count=900, genie_active=True))
+    # Inventory window closes (count unknown): must not be treated as a restock.
+    m.observe(ok(12.0, inventory_open=False, arrow_count=None, genie_active=True))
+    events = m.observe(ok(14.0, inventory_open=True, arrow_count=850, genie_active=True))
+    assert EventKind.ARROW_LOW not in [e.kind for e in events]
+
+
+def test_arrow_count_zero_alerts(m):
+    events = m.observe(ok(10.0, inventory_open=True, arrow_count=0, genie_active=True))
+    assert (EventKind.ARROW_LOW, True) in kinds(events)

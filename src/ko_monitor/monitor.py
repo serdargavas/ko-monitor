@@ -180,7 +180,15 @@ class Monitor:
             else:
                 self._genie_pending, self._genie_reads = r.genie_active, 1
             if self._genie_reads >= self._t.confirm_reads:
+                was_off = self.genie_active is False
                 self.genie_active = r.genie_active
+                if was_off and self.genie_active is True:
+                    # Farming resumed: re-arm farm alerts. Otherwise a bag/count that stayed bad
+                    # through the whole silenced stretch keeps its throttle from the silent alert
+                    # and the first real alert after resuming can be swallowed for up to
+                    # item_low_repeat_s / inventory_full_repeat_s.
+                    self._last_item_alert.clear()
+                    self._last_inventory_alert = None
         if r.arrow_count is not None:
             self.arrow_last = r.arrow_count
         if r.mana_count is not None:
