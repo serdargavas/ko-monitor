@@ -44,6 +44,17 @@ describe("Status screen", () => {
     expect(screen.getByText("Henüz olay yok.")).toBeTruthy();
   });
 
+  it("shows arrow and mana counts and the genie state", async () => {
+    stubFetch({
+      "/api/status": agentStatus({ arrow_last: 6380, mana_last: 4150, genie_active: true }),
+      "/api/events": [],
+    });
+    render(<Status />);
+    expect(await screen.findByText(/6\.380/)).toBeTruthy();
+    expect(screen.getByText(/4\.150/)).toBeTruthy();
+    expect(screen.getByText(/Genie çalışıyor/)).toBeTruthy();
+  });
+
   it("says when the PC cannot be reached", async () => {
     stubFetch({ "/api/status": new TypeError("Failed to fetch"), "/api/events": [] });
     render(<Status />);

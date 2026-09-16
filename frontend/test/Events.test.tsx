@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Events } from "../src/screens/Events";
 import { DAY_S } from "../src/timeline";
-import { eventItem, snapshot, stubFetch } from "./fakes";
+import { eventItem, income, snapshot, stubFetch } from "./fakes";
 
 describe("Events screen", () => {
   it("lists events and draws the 24 h timeline", async () => {
@@ -10,6 +10,7 @@ describe("Events screen", () => {
     const fetchMock = stubFetch({
       "/api/events": [eventItem(2, "game_started", now - 120), eventItem(1, "inventory_full", now - 600, "28/28")],
       "/api/snapshots": [snapshot(now - 600, "alive"), snapshot(now - 540, "dead")],
+      "/api/income?hours=24": income(),
     });
     render(<Events />);
     expect(await screen.findByText("▶️ Oyun açıldı")).toBeTruthy();
@@ -26,13 +27,19 @@ describe("Events screen", () => {
     expect(Math.abs(since - (now - DAY_S))).toBeLessThan(5);
   });
 
+  it("shows the income chart above the event list", async () => {
+    stubFetch({ "/api/events": [], "/api/snapshots": [], "/api/income?hours=24": income() });
+    render(<Events />);
+    expect(await screen.findByText(/Kazanç/)).toBeTruthy();
+  });
+
   it("reloads on Yenile and shows an empty list", async () => {
-    const fetchMock = stubFetch({ "/api/events": [], "/api/snapshots": [] });
+    const fetchMock = stubFetch({ "/api/events": [], "/api/snapshots": [], "/api/income?hours=24": income() });
     render(<Events />);
     expect(await screen.findByText("Henüz olay yok.")).toBeTruthy();
     const button = screen.getByRole("button", { name: "Yenile" }) as HTMLButtonElement;
     await waitFor(() => expect(button.disabled).toBe(false));
     fireEvent.click(button);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
   });
 });

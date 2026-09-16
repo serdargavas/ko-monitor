@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { AgentStatus, EventItem, Snapshot, State } from "../src/types";
+import type { AgentStatus, EventItem, Income, Snapshot, State } from "../src/types";
 
 /** Stands in for the browser WebSocket; tests drive it with receive() and serverClose(). */
 export class FakeWebSocket {
@@ -128,4 +128,8 @@ export function agentStatus(overrides: Partial<AgentStatus> = {}): AgentStatus {
 
 export function eventItem(id: number, kind: string, ts: number, detail = ""): EventItem {
   return { id, ts, kind, detail, notified: true, notified_at: ts };
+}
+
+export function income(overrides: Partial<Income> = {}): Income {
+  return { hours: [{ start: 3600, delta: 1000, samples: 60 }], avg_1h: 1000, avg_6h: 1000, avg_24h: 1000, ...overrides };
 }

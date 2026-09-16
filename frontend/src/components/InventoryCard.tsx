@@ -26,6 +26,16 @@ export function InventoryCard({ status }: { status: AgentStatus }) {
         <dt>Görüldü</dt>
         <dd>{seenText}</dd>
       </dl>
+      <p className="meta">
+        Ok: {numberText(status.arrow_last)} · Pot: {numberText(status.mana_last)}
+      </p>
+      <p className="meta">
+        {status.genie_active === null
+          ? "Genie durumu bilinmiyor"
+          : status.genie_active
+            ? "Genie çalışıyor"
+            : "Genie durdu — bildirimler susturuldu"}
+      </p>
     </section>
   );
 }
