@@ -17,7 +17,12 @@ frozen_s = 120.0               # no picture change this long -> frozen
 blind_s = 60.0                 # capture unusable this long -> blind
 startup_grace_s = 300.0        # after launch, no dead/disconnect/frozen/blind until the HUD is first seen (at most this long)
 unknown_dialog_s = 30.0        # center dialog with unrecognised text open this long while alive -> disconnected
-inventory_full_repeat_s = 600.0
+inventory_full_repeat_s = 600.0 # aynı "çanta doldu" uyarısı bu süre dolmadan tekrarlanmaz
+arrow_low = 1000               # ok bu sayının altına düşünce uyarı (~1790 ok/saat harcanıyor: ~35 dk önceden)
+mana_low = 200                 # mana potu bu sayının altına düşünce uyarı (~311 pot/saat: ~35 dk önceden)
+item_low_repeat_s = 600.0      # aynı ok/pot uyarısı bu süre dolmadan tekrarlanmaz
+genie_off_grace_s = 120.0      # ölüm uyarısı ancak genie bu süredir kapalıysa susturulur; yeni durmuş bir bot çökmüş olabilir
+income_max_jump = 50000000     # iki ölçüm arası bu farktan büyük sıçrama kazanç grafiğine katılmaz (OCR hatası)
 frozen_diff_max = 0.5          # mean abs diff (0-255) of 64x36 gray frames counted as "no change"
 snapshot_retention_s = 2592000 # 30 days
 

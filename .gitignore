@@ -6,3 +6,5 @@ config.toml
 data/
 logs/
 frontend/node_modules/
+samples/_auto/
+samples/_review/
