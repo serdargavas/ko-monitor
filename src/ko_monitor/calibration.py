@@ -65,6 +65,9 @@ class ItemsSpec:
     # the ones it adds later. Measured over every committed frame: scrolls score 0.82-1.00 in
     # grayscale, everything else at most 0.66.
     scroll_threshold: float
+    # Only the top row holds the scrolls the player sells; the same shape appears elsewhere in the
+    # bag on items that are not for sale, so shape alone would over-count.
+    scroll_row: int
     match_threshold: float
     count_box: Roi  # stack count, relative to the slot's top-left corner
     template_height: int
@@ -143,6 +146,7 @@ def load_calibration(path: Path) -> Calibration:
             ),
             scroll_files=tuple(base / f for f in itm.get("scroll_files", [])),
             scroll_threshold=float(itm.get("scroll_threshold", 0.75)),
+            scroll_row=int(itm.get("scroll_row", 0)),
             match_threshold=float(itm.get("match_threshold", 0.85)),
             count_box=tuple(itm["count_box"]),
             template_height=int(itm.get("template_height", 27)),

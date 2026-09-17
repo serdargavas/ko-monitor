@@ -68,7 +68,8 @@ def test_unreadable_stack_count_reads_unknown(ocr):
         def read_line(self, _image):
             return None
 
-    assert read_items(ON, True, CALIB.inventory, CALIB.items, NoDigits()) == ItemReading(None, None)
+    reading = read_items(ON, True, CALIB.inventory, CALIB.items, NoDigits())
+    assert (reading.arrows, reading.mana) == (None, None)
 
 
 UNLIMITED = cv2.imread("samples/arrow_unlimited/20260917-100816.png")
@@ -95,11 +96,17 @@ def test_an_uncalibrated_unlimited_quiver_leaves_the_count_alone(ocr):
     assert reading.arrows == 0  # the old quiver really is gone from this bag
 
 
-def test_scrolls_are_summed_across_colours_wherever_they_sit(ocr):
-    # Scrolls come in several colours and the player moves them around; one template scores only
-    # 0.64 against the gold one, so each colour has its own and every matching slot is counted.
+def test_scrolls_are_summed_across_the_row_whatever_their_colour(ocr):
+    # The row holds seven colours of the same scroll. Matching is colour-blind, so a colour the
+    # server adds later still counts without anyone re-cutting a template.
     reading = read_items(UNLIMITED, True, CALIB.inventory, CALIB.items, ocr)
     assert reading.scrolls == 120 + 129 + 121 + 104 + 119 + 127 + 126
+
+
+def test_scroll_shaped_items_outside_the_row_are_not_counted(ocr):
+    # This frame carries over a thousand scroll-shaped items in the lower rows, but only the top
+    # row holds the ones the player sells; counting the rest would inflate the bag's worth.
+    assert read_items(ON, True, CALIB.inventory, CALIB.items, ocr).scrolls == 0
 
 
 def test_without_scroll_templates_the_count_is_unknown(ocr):

@@ -82,6 +82,9 @@ def _count_any(
     never seen still counts. Measured over every committed frame: in grayscale scrolls score
     0.82-1.00 and no other item passes 0.66, so the threshold sits between at 0.75. Matching in
     colour instead would miss every new colour the server adds.
+
+    The caller narrows the cells to the row the player keeps them in: items elsewhere in the bag
+    share this shape without being the scrolls that get sold.
     """
     if not templates:
         return None
@@ -158,7 +161,9 @@ def read_items(
         return ItemReading(None, None)
     mana = _count_of(frame, cells, mana_t, spec, ocr)
     scroll_ts = [t for t in (load_template(str(f)) for f in spec.scroll_files) if t is not None]
-    scrolls = _count_any(frame, cells, scroll_ts, spec, ocr)
+    row_start = spec.scroll_row * inv.cols
+    scroll_cells = cells[row_start : row_start + inv.cols]
+    scrolls = _count_any(frame, scroll_cells, scroll_ts, spec, ocr)
 
     # The never-emptying quiver shows as a stack of 1, so counting it would alert forever. When it
     # is in the bag the arrow count is meaningless and no arrow alert should ever fire.
