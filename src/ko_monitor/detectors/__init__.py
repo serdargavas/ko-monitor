@@ -66,6 +66,11 @@ class Detector:
         """Chat OCR (det + rec) is the expensive part of a tick: run it only every chat_interval_s."""
         if not hud_visible:
             return []
+        # Detection + recognition over the chat area costs ~1.2 s of CPU, about a third of a core
+        # at this interval. With no phrases configured it can only ever return nothing, so it is
+        # skipped entirely until the first real "inventory full" line teaches us what to look for.
+        if not any(self._calib.chat_phrases.values()):
+            return []
         now = self._now()
         if self._last_chat_read is not None and now - self._last_chat_read < self._chat_interval_s:
             return []

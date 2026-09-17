@@ -1,8 +1,12 @@
+import dataclasses
+from pathlib import Path
+
 import cv2
 import numpy as np
 import pytest
 
 from helpers import SAMPLES
+from ko_monitor.calibration import load_calibration
 from ko_monitor.detectors import Detector
 from ko_monitor.detectors.dialog import DialogCache
 
@@ -55,7 +59,9 @@ def test_chat_is_read_at_most_once_per_chat_interval(calib, monkeypatch):
         detectors, "read_chat", lambda frame, calib, ocr, tracker: chat_reads.append(1) or ["inventory_full"]
     )
     clock = {"now": 100.0}
-    detector = Detector(calib, None, chat_interval_s=4.0, now=lambda: clock["now"])
+    # Chat is skipped outright when no phrase is configured, so this test needs one.
+    with_phrase = dataclasses.replace(calib, chat_phrases={"inventory_full": ["inventory is full"]})
+    detector = Detector(with_phrase, None, chat_interval_s=4.0, now=lambda: clock["now"])
     width, height = calib.resolution
     frame = np.zeros((height, width, 3), np.uint8)
 
@@ -139,3 +145,37 @@ def test_detector_reports_stopped_genie(calib, ocr):
     detector = Detector(calib, ocr)
     readings = detector.detect(cv2.imread(str(SAMPLES / "genie_off" / "20260916-154450.png")))
     assert readings.genie_active is False
+
+
+def test_chat_is_not_read_while_no_phrases_are_configured(calib, monkeypatch):
+    # An empty phrase list can only ever match nothing, and the chat pass costs ~1.2 s of CPU:
+    # about a third of a core at a 4 s interval, on the machine running the game.
+    import ko_monitor.detectors as detectors
+
+    assert calib.chat_phrases == {"inventory_full": []}, "fixture drifted: this test needs empty phrases"
+    chat_reads = []
+    monkeypatch.setattr(
+        detectors, "read_hud", lambda frame, calib, ocr: (True, 9000, 9996, "Ronark Land")
+    )
+    monkeypatch.setattr(detectors, "read_inventory", lambda frame, inv, ocr: (None, None, None, None))
+    monkeypatch.setattr(detectors, "template_present", lambda frame, template: None)
+    monkeypatch.setattr(detectors, "read_chat", lambda *a: chat_reads.append(1) or [])
+    width, height = calib.resolution
+    Detector(calib, None).detect(np.zeros((height, width, 3), np.uint8))
+    assert chat_reads == []
+
+
+def test_chat_is_read_once_a_phrase_is_configured(calib, monkeypatch):
+    import ko_monitor.detectors as detectors
+
+    chat_reads = []
+    monkeypatch.setattr(
+        detectors, "read_hud", lambda frame, calib, ocr: (True, 9000, 9996, "Ronark Land")
+    )
+    monkeypatch.setattr(detectors, "read_inventory", lambda frame, inv, ocr: (None, None, None, None))
+    monkeypatch.setattr(detectors, "template_present", lambda frame, template: None)
+    monkeypatch.setattr(detectors, "read_chat", lambda *a: chat_reads.append(1) or [])
+    with_phrase = dataclasses.replace(calib, chat_phrases={"inventory_full": ["inventory is full"]})
+    width, height = calib.resolution
+    Detector(with_phrase, None).detect(np.zeros((height, width, 3), np.uint8))
+    assert chat_reads == [1]
