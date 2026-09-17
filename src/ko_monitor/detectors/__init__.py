@@ -89,7 +89,7 @@ class Detector:
         inventory_open, money, slots_used, slots_total = read_inventory(
             frame, self._calib.inventory, self._ocr
         )
-        arrow_count, mana_count = read_items(
+        items = read_items(
             frame, inventory_open, self._calib.inventory, self._calib.items, self._ocr
         )
         # One template match per tick; the rec-only OCR of the text lines runs only while the
@@ -114,8 +114,9 @@ class Detector:
             money=money,
             slots_used=slots_used,
             slots_total=slots_total,
-            arrow_count=arrow_count,
-            mana_count=mana_count,
+            arrow_count=items.arrows,
+            arrow_unlimited=items.arrow_unlimited,
+            mana_count=items.mana,
             genie_active=read_genie(frame, self._calib.genie),
             frame_diff=self._diff.update(frame),
         )

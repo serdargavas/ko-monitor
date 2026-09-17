@@ -56,6 +56,16 @@ describe("Status screen", () => {
     expect(screen.getByText(/Genie çalışıyor/)).toBeTruthy();
   });
 
+  it("shows arrows as unlimited instead of a count", async () => {
+    // The never-emptying quiver reads as a stack of 1; showing "1" would look like it is about to run out.
+    stubFetch({
+      "/api/status": agentStatus({ arrow_last: 1, arrow_unlimited: true }),
+      "/api/events": [],
+    });
+    render(<Status />);
+    expect(await screen.findByText("∞ sınırsız")).toBeTruthy();
+  });
+
   it("shows the genie state as unknown when it has not been read", async () => {
     stubFetch({
       "/api/status": agentStatus({ genie_active: null }),

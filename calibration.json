@@ -1,8 +1,26 @@
 {
-  "resolution": [2560, 1440],
-  "hp_roi": [60, 34, 130, 16],
-  "zone_roi": [40, 74, 160, 20],
-  "chat_roi": [1980, 960, 570, 410],
+  "resolution": [
+    2560,
+    1440
+  ],
+  "hp_roi": [
+    60,
+    34,
+    130,
+    16
+  ],
+  "zone_roi": [
+    40,
+    74,
+    160,
+    20
+  ],
+  "chat_roi": [
+    1980,
+    960,
+    570,
+    410
+  ],
   "black_threshold": 0.95,
   "ocr_min_score": 0.8,
   "chat_phrases": {
@@ -10,35 +28,117 @@
   },
   "templates": {},
   "inventory": {
-    "window": {"roi": [2298, 217, 126, 94], "file": "templates/inventory_window.png", "threshold": 0.8},
-    "money_roi": [2233, 531, 96, 22],
-    "slot_origin": [2193, 577],
-    "slot_size": [45, 45],
-    "slot_step": [49, 49],
+    "window": {
+      "roi": [
+        2298,
+        217,
+        126,
+        94
+      ],
+      "file": "templates/inventory_window.png",
+      "threshold": 0.8
+    },
+    "money_roi": [
+      2233,
+      531,
+      96,
+      22
+    ],
+    "slot_origin": [
+      2193,
+      577
+    ],
+    "slot_size": [
+      45,
+      45
+    ],
+    "slot_step": [
+      49,
+      49
+    ],
     "cols": 7,
     "rows": 4,
     "empty_slot_file": "templates/empty_slot.png",
     "empty_max_diff": 12
   },
   "dialog": {
-    "frame": {"roi": [1072, 593, 110, 106], "file": "templates/dialog_frame.png", "threshold": 0.8},
-    "text_rois": [[1131, 671, 310, 17], [1131, 688, 310, 18]],
-    "revive_phrases": ["teleport back to the re-spawn"],
-    "disconnect_phrases": ["disconnect", "disconnected", "connection", "server", "bağlantı", "sunucu"],
+    "frame": {
+      "roi": [
+        1072,
+        593,
+        110,
+        106
+      ],
+      "file": "templates/dialog_frame.png",
+      "threshold": 0.8
+    },
+    "text_rois": [
+      [
+        1131,
+        671,
+        310,
+        17
+      ],
+      [
+        1131,
+        688,
+        310,
+        18
+      ]
+    ],
+    "revive_phrases": [
+      "teleport back to the re-spawn"
+    ],
+    "disconnect_phrases": [
+      "disconnect",
+      "disconnected",
+      "connection",
+      "server",
+      "bağlantı",
+      "sunucu"
+    ],
     "ignore_phrases": []
   },
   "genie": {
-    "header": {"roi": [2200, 0, 360, 220], "file": "templates/genie_header.png", "threshold": 0.8},
-    "header_at": [2330, 0],
-    "stop_box": [2511, 9, 12, 13],
-    "play_box": [2482, 9, 14, 14],
+    "header": {
+      "roi": [
+        2200,
+        0,
+        360,
+        220
+      ],
+      "file": "templates/genie_header.png",
+      "threshold": 0.8
+    },
+    "header_at": [
+      2330,
+      0
+    ],
+    "stop_box": [
+      2511,
+      9,
+      12,
+      13
+    ],
+    "play_box": [
+      2482,
+      9,
+      14,
+      14
+    ],
     "margin": 60
   },
   "items": {
     "arrow_file": "templates/item_arrow.png",
     "mana_file": "templates/item_mana.png",
     "match_threshold": 0.85,
-    "count_box": [1, 28, 30, 16],
-    "template_height": 27
+    "count_box": [
+      1,
+      28,
+      30,
+      16
+    ],
+    "template_height": 27,
+    "arrow_unlimited_file": "templates/item_arrow_unlimited.png"
   }
 }

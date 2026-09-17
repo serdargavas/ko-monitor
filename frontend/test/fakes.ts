@@ -120,6 +120,7 @@ export function agentStatus(overrides: Partial<AgentStatus> = {}): AgentStatus {
     slots_total_last: 28,
     inventory_seen_at: 999_700,
     arrow_last: null,
+    arrow_unlimited: false,
     mana_last: null,
     genie_active: null,
     ...overrides,

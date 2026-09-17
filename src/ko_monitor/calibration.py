@@ -55,6 +55,9 @@ class GenieSpec:
 class ItemsSpec:
     arrow_file: Path
     mana_file: Path
+    # The server sells a quiver that never empties; it shows as a stack of 1 and must not be
+    # counted or alerted on. None = this account has never had one.
+    arrow_unlimited_file: Path | None
     match_threshold: float
     count_box: Roi  # stack count, relative to the slot's top-left corner
     template_height: int
@@ -128,6 +131,9 @@ def load_calibration(path: Path) -> Calibration:
         items = ItemsSpec(
             arrow_file=base / itm["arrow_file"],
             mana_file=base / itm["mana_file"],
+            arrow_unlimited_file=(
+                base / itm["arrow_unlimited_file"] if itm.get("arrow_unlimited_file") else None
+            ),
             match_threshold=float(itm.get("match_threshold", 0.85)),
             count_box=tuple(itm["count_box"]),
             template_height=int(itm.get("template_height", 27)),

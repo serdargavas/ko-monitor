@@ -36,6 +36,7 @@ export interface AgentStatus {
   slots_total_last: number | null;
   inventory_seen_at: number | null;
   arrow_last: number | null;
+  arrow_unlimited: boolean;
   mana_last: number | null;
   genie_active: boolean | null;
 }

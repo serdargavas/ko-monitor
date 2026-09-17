@@ -49,6 +49,7 @@ class Monitor:
         self.slots_used_last: int | None = None
         self.slots_total_last: int | None = None
         self.arrow_last: int | None = None
+        self.arrow_unlimited = False
         self.mana_last: int | None = None
         self.genie_active: bool | None = None
         self.inventory_seen_at: float | None = None
@@ -245,6 +246,7 @@ class Monitor:
                 self._genie_pending, self._genie_reads = r.genie_active, 1
             if self._genie_reads >= self._t.confirm_reads:
                 self._set_genie(ts, r.genie_active)
+        self.arrow_unlimited = r.arrow_unlimited
         if r.arrow_count is not None:
             self.arrow_last = r.arrow_count
         if r.mana_count is not None:
@@ -261,7 +263,8 @@ class Monitor:
     def _item_events(self, ts: float, r: Readings) -> list[Event]:
         events = []
         for kind, count, limit in (
-            (EventKind.ARROW_LOW, r.arrow_count, self._t.arrow_low),
+            # An unlimited quiver has no count worth watching: never alert on arrows while it is there.
+            (EventKind.ARROW_LOW, None if r.arrow_unlimited else r.arrow_count, self._t.arrow_low),
             (EventKind.MANA_LOW, r.mana_count, self._t.mana_low),
         ):
             if count is None:

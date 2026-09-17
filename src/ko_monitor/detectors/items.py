@@ -8,6 +8,8 @@ bottom strip with the same recognition-only OCR that reads HP and money.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import cv2
 import numpy as np
 
@@ -16,6 +18,14 @@ from ko_monitor.detectors.inventory import parse_money
 from ko_monitor.detectors.templates import load_template
 
 _COUNT_SCALE = 4  # the digits are ~14 px tall; OCR reads them reliably enlarged
+
+
+class ItemReading(NamedTuple):
+    """arrows/mana are None when they could not be read; arrow_unlimited replaces the arrow count."""
+
+    arrows: int | None
+    mana: int | None
+    arrow_unlimited: bool = False
 
 
 def _slot_positions(frame: np.ndarray, inv: InventorySpec) -> list[tuple[int, int]] | None:
@@ -43,6 +53,21 @@ def _stack_count(frame: np.ndarray, cell: tuple[int, int], spec: ItemsSpec, ocr)
     big = cv2.resize(patch, (cw * _COUNT_SCALE, ch * _COUNT_SCALE), interpolation=cv2.INTER_CUBIC)
     line = ocr.read_line(big)
     return parse_money(line[0]) if line else None
+
+
+def _present(
+    frame: np.ndarray, cells: list[tuple[int, int]], template: np.ndarray, spec: ItemsSpec
+) -> bool:
+    """Is this icon in the bag at all? Used for items whose stack count means nothing."""
+    t_h, t_w = template.shape[:2]
+    for x, y in cells:
+        patch = frame[y : y + t_h, x : x + t_w]
+        if patch.shape[:2] != (t_h, t_w):
+            continue
+        score = float(np.nan_to_num(cv2.matchTemplate(patch, template, cv2.TM_CCOEFF_NORMED)).max())
+        if score >= spec.match_threshold:
+            return True
+    return False
 
 
 def _count_of(
@@ -78,23 +103,28 @@ def read_items(
     inv: InventorySpec | None,
     spec: ItemsSpec | None,
     ocr,
-) -> tuple[int | None, int | None]:
-    """(arrows, mana potions); both None while the bag is closed or nothing is calibrated."""
+) -> ItemReading:
+    """Arrows and mana potions; both None while the bag is closed or nothing is calibrated."""
     if not inventory_open or inv is None or spec is None:
-        return None, None
+        return ItemReading(None, None)
     arrow_t = load_template(str(spec.arrow_file))
     mana_t = load_template(str(spec.mana_file))
     if arrow_t is None or mana_t is None:
-        return None, None
+        return ItemReading(None, None)
     # A re-cut template of the wrong size would silently fail every match, and "no icon found
     # anywhere" is deliberately reported as 0 — which would fire a false "arrows are gone" alarm.
     # Cross-check the loaded templates against the calibrated height so that mistake is loud.
     if arrow_t.shape[0] != spec.template_height or mana_t.shape[0] != spec.template_height:
-        return None, None
+        return ItemReading(None, None)
     cells = _slot_positions(frame, inv)
     if cells is None:
-        return None, None
-    return (
-        _count_of(frame, cells, arrow_t, spec, ocr),
-        _count_of(frame, cells, mana_t, spec, ocr),
-    )
+        return ItemReading(None, None)
+    mana = _count_of(frame, cells, mana_t, spec, ocr)
+
+    # The never-emptying quiver shows as a stack of 1, so counting it would alert forever. When it
+    # is in the bag the arrow count is meaningless and no arrow alert should ever fire.
+    unlimited_t = load_template(str(spec.arrow_unlimited_file)) if spec.arrow_unlimited_file else None
+    if unlimited_t is not None and unlimited_t.shape[0] == spec.template_height:
+        if _present(frame, cells, unlimited_t, spec):
+            return ItemReading(None, mana, True)
+    return ItemReading(_count_of(frame, cells, arrow_t, spec, ocr), mana)

@@ -53,6 +53,7 @@ class Readings:
     slots_used: int | None = None
     slots_total: int | None = None
     arrow_count: int | None = None
+    arrow_unlimited: bool = False  # the never-emptying quiver is in the bag: nothing to count
     mana_count: int | None = None
     genie_active: bool | None = None  # None = the Genie panel could not be read
     frame_diff: float | None = None
