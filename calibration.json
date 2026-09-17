@@ -144,6 +144,7 @@
       "templates/item_scroll_mavi.png",
       "templates/item_scroll_altin.png",
       "templates/item_scroll_yesil.png"
-    ]
+    ],
+    "scroll_threshold": 0.75
   }
 }

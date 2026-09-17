@@ -61,6 +61,10 @@ class ItemsSpec:
     # Scrolls come in several colours with the same shape; one template per colour, because a
     # single template scores only 0.64 against the gold one.
     scroll_files: tuple[Path, ...]
+    # Scrolls are matched colour-blind, so one shape covers every colour the server sells - and
+    # the ones it adds later. Measured over every committed frame: scrolls score 0.82-1.00 in
+    # grayscale, everything else at most 0.66.
+    scroll_threshold: float
     match_threshold: float
     count_box: Roi  # stack count, relative to the slot's top-left corner
     template_height: int
@@ -138,6 +142,7 @@ def load_calibration(path: Path) -> Calibration:
                 base / itm["arrow_unlimited_file"] if itm.get("arrow_unlimited_file") else None
             ),
             scroll_files=tuple(base / f for f in itm.get("scroll_files", [])),
+            scroll_threshold=float(itm.get("scroll_threshold", 0.75)),
             match_threshold=float(itm.get("match_threshold", 0.85)),
             count_box=tuple(itm["count_box"]),
             template_height=int(itm.get("template_height", 27)),

@@ -4,10 +4,11 @@ Income is the change in *wealth*, not in coins: scrolls waiting in the bag are c
 scroll_price. Counting them as income when they drop and again as coins when they sell would
 report the same earnings twice, and ignoring them would leave hours of looting looking idle.
 
-A bucket's income is the sum of the rises between consecutive money readings inside it. Steps
-larger than max_jump are dropped: a single OCR misread of the money line would otherwise show as
-a billion-coin hour. Real large purchases are dropped by the same rule - this measures farm rate,
-not bookkeeping.
+A bucket's income is the sum of the changes between consecutive readings inside it. A misread of
+the money line would otherwise show as a billion-coin hour, so readings that disagree with both
+neighbours by more than max_jump are thrown away - but a real purchase persists into the next
+reading, so spending shows up in full. Only the last reading of a bucket cannot be confirmed that
+way, and an unexplained jump there is dropped.
 
 Hours are plain 3600 s blocks, but days are local midnight to local midnight. Bucketing days by
 86400 s arithmetic would put the boundary at 03:00 for this user, splitting every night's farming
@@ -23,6 +24,8 @@ from ko_monitor.models import Snapshot
 
 HOUR_S = 3600.0
 DAY_S = 86400.0
+# The game caps a purse at about 2.1 billion coins; anything above that is a misread, not money.
+MAX_COINS = 2_100_000_000
 
 
 def _hour_bucket(ts: float) -> float:
@@ -44,16 +47,37 @@ def day_starts(now: float, days: int) -> list[float]:
     ]
 
 
+def _drop_spikes(values: Sequence[tuple[int, bool]], max_jump: int) -> list[tuple[int, bool]]:
+    """Throws away readings that disagree with both neighbours: that is what a misread looks like.
+
+    A real purchase or a real windfall persists into the following reading, so it survives and is
+    counted in full - which is the point, since dropping every large step hid the user's spending
+    entirely.
+    """
+    if len(values) < 3:
+        return list(values)
+    kept = [values[0]]
+    for index in range(1, len(values) - 1):
+        current, following = values[index], values[index + 1]
+        previous = kept[-1]
+        if abs(current[0] - previous[0]) > max_jump and abs(following[0] - previous[0]) <= max_jump:
+            continue
+        kept.append(current)
+    # Nothing follows the last reading, so an unexplained jump there cannot be confirmed.
+    if abs(values[-1][0] - kept[-1][0]) <= max_jump:
+        kept.append(values[-1])
+    return kept
+
+
 def _delta_of(values: Sequence[tuple[int, bool]], max_jump: int) -> int:
+    clean = _drop_spikes(values, max_jump)
     total = 0
-    for (previous, had_scrolls), (current, has_scrolls) in zip(values, values[1:]):
+    for (previous, had_scrolls), (current, has_scrolls) in zip(clean, clean[1:]):
         # Rows written before scroll counting existed hold coins only. Subtracting one from a
         # wealth reading would invent a jump the size of the whole bag, so such pairs are skipped.
         if had_scrolls != has_scrolls:
             continue
-        step = current - previous
-        if abs(step) <= max_jump:
-            total += step
+        total += current - previous
     return total
 
 
@@ -79,7 +103,7 @@ def _collect(
     grouped: dict[float, list[tuple[int, bool]]] = {start: [] for start in starts}
     seen_last: dict[float, float] = {}
     for snap in snapshots:
-        if snap.money_last is None:
+        if snap.money_last is None or not 0 <= snap.money_last <= MAX_COINS:
             continue
         bucket = bucket_of(snap.ts)
         if bucket not in grouped:

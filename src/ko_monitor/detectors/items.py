@@ -78,23 +78,26 @@ def _count_any(
     spec: ItemsSpec,
     ocr,
 ) -> int | None:
-    """Like _count_of but for an item with several looks: scrolls share one shape in many colours,
-    and a single template scores only 0.64 against the gold one. A slot is counted once however
-    many of the templates match it.
+    """Counts an item that comes in several colours, matching colour-blind so a colour we have
+    never seen still counts. Measured over every committed frame: in grayscale scrolls score
+    0.82-1.00 and no other item passes 0.66, so the threshold sits between at 0.75. Matching in
+    colour instead would miss every new colour the server adds.
     """
     if not templates:
         return None
+    grays = [cv2.cvtColor(t, cv2.COLOR_BGR2GRAY) for t in templates]
     total, matched = 0, False
     for x, y in cells:
         best = 0.0
-        for template in templates:
+        for template in grays:
             t_h, t_w = template.shape[:2]
             patch = frame[y : y + t_h, x : x + t_w]
             if patch.shape[:2] != (t_h, t_w):
                 continue
-            score = float(np.nan_to_num(cv2.matchTemplate(patch, template, cv2.TM_CCOEFF_NORMED)).max())
+            gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+            score = float(np.nan_to_num(cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)).max())
             best = max(best, score)
-        if best < spec.match_threshold:
+        if best < spec.scroll_threshold:
             continue
         matched = True
         count = _stack_count(frame, (x, y), spec, ocr)

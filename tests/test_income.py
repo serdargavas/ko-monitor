@@ -32,11 +32,12 @@ def test_hours_without_data_are_null_and_excluded_from_the_average():
     assert out["avg_24h"] == 2000  # the two empty hours do not drag the average down
 
 
-def test_a_single_ocr_glitch_is_skipped():
-    # 1000 -> 999999999 -> 2000: the middle reading is impossible, so both steps around it drop.
+def test_a_single_ocr_glitch_is_thrown_away():
+    # 1000 -> 999999999 -> 2000: the middle reading disagrees with both neighbours while they
+    # agree with each other, so it is discarded and the real gain between them survives.
     snaps = [snap(HOUR * 9 + 10, 1000), snap(HOUR * 9 + 20, 999_999_999), snap(HOUR * 9 + 30, 2000)]
     out = hourly_income(snaps, now=HOUR * 9 + 40, hours=1, max_jump=50_000_000)
-    assert out["hours"][0]["delta"] == 0
+    assert out["hours"][0]["delta"] == 1000
 
 
 def test_spending_shows_as_negative():
@@ -174,3 +175,38 @@ def test_daily_income_counts_scrolls_too():
     ]
     out = daily_income(snaps, now=local(2026, 9, 15, 14, 0), days=1, scroll_price=60_000)
     assert out["days"][0]["delta"] == 6_000_000
+
+
+def test_a_real_purchase_is_counted_in_full():
+    # 180 million spent on gear: it persists into every later reading, so it is not a misread and
+    # the chart must show it. Dropping every large step used to hide spending completely.
+    snaps = [
+        snap(HOUR * 9 + 10, 514_000_000),
+        snap(HOUR * 9 + 20, 334_000_000),
+        snap(HOUR * 9 + 30, 334_200_000),
+    ]
+    out = hourly_income(snaps, now=HOUR * 9 + 40, hours=1, max_jump=50_000_000)
+    assert out["hours"][0]["delta"] == -179_800_000
+
+
+def test_an_unconfirmed_jump_in_the_last_reading_is_dropped():
+    # Nothing follows it, so there is no way to tell a purchase from a misread; stay quiet.
+    snaps = [
+        snap(HOUR * 9 + 10, 1_000_000),
+        snap(HOUR * 9 + 20, 1_200_000),
+        snap(HOUR * 9 + 30, 900_000_000),
+    ]
+    out = hourly_income(snaps, now=HOUR * 9 + 40, hours=1, max_jump=50_000_000)
+    assert out["hours"][0]["delta"] == 200_000
+
+
+def test_impossible_coin_totals_are_ignored():
+    # The purse caps around 2.1 billion; a bigger number is an OCR misread of the money line.
+    snaps = [
+        snap(HOUR * 9 + 10, 1_000_000),
+        snap(HOUR * 9 + 20, 43_000_000_000),
+        snap(HOUR * 9 + 30, 1_500_000),
+    ]
+    out = hourly_income(snaps, now=HOUR * 9 + 40, hours=1)
+    assert out["hours"][0]["samples"] == 2
+    assert out["hours"][0]["delta"] == 500_000
