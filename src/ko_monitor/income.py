@@ -1,4 +1,8 @@
-"""Coin income per hour and per day, derived from the snapshots the agent already writes.
+"""Income per hour and per day, derived from the snapshots the agent already writes.
+
+Income is the change in *wealth*, not in coins: scrolls waiting in the bag are counted at
+scroll_price. Counting them as income when they drop and again as coins when they sell would
+report the same earnings twice, and ignoring them would leave hours of looting looking idle.
 
 A bucket's income is the sum of the rises between consecutive money readings inside it. Steps
 larger than max_jump are dropped: a single OCR misread of the money line would otherwise show as
@@ -40,9 +44,13 @@ def day_starts(now: float, days: int) -> list[float]:
     ]
 
 
-def _delta_of(values: Sequence[int], max_jump: int) -> int:
+def _delta_of(values: Sequence[tuple[int, bool]], max_jump: int) -> int:
     total = 0
-    for previous, current in zip(values, values[1:]):
+    for (previous, had_scrolls), (current, has_scrolls) in zip(values, values[1:]):
+        # Rows written before scroll counting existed hold coins only. Subtracting one from a
+        # wealth reading would invent a jump the size of the whole bag, so such pairs are skipped.
+        if had_scrolls != has_scrolls:
+            continue
         step = current - previous
         if abs(step) <= max_jump:
             total += step
@@ -55,8 +63,11 @@ def _average(deltas: Iterable[int | None]) -> float | None:
 
 
 def _collect(
-    snapshots: Iterable[Snapshot], starts: Sequence[float], bucket_of: Callable[[float], float]
-) -> dict[float, list[int]]:
+    snapshots: Iterable[Snapshot],
+    starts: Sequence[float],
+    bucket_of: Callable[[float], float],
+    scroll_price: int,
+) -> dict[float, list[tuple[int, bool]]]:
     """Money readings per bucket, keeping only readings the inventory window actually produced.
 
     money_last only changes while the inventory window is open; every snapshot written with the
@@ -65,7 +76,7 @@ def _collect(
     headline averages down. A snapshot is evidence for a bucket only if the inventory was seen
     inside that same bucket, and repeats of one reading count once.
     """
-    grouped: dict[float, list[int]] = {start: [] for start in starts}
+    grouped: dict[float, list[tuple[int, bool]]] = {start: [] for start in starts}
     seen_last: dict[float, float] = {}
     for snap in snapshots:
         if snap.money_last is None:
@@ -78,11 +89,15 @@ def _collect(
         if seen_last.get(bucket) == snap.inventory_seen_at:
             continue
         seen_last[bucket] = snap.inventory_seen_at
-        grouped[bucket].append(int(snap.money_last))
+        has_scrolls = snap.scrolls_last is not None
+        wealth = int(snap.money_last) + scroll_price * (snap.scrolls_last or 0)
+        grouped[bucket].append((wealth, has_scrolls))
     return grouped
 
 
-def _rows(starts: Sequence[float], grouped: dict[float, list[int]], max_jump: int) -> list[dict]:
+def _rows(
+    starts: Sequence[float], grouped: dict[float, list[tuple[int, bool]]], max_jump: int
+) -> list[dict]:
     rows = []
     for start in starts:
         values = grouped[start]
@@ -101,11 +116,12 @@ def hourly_income(
     now: float,
     hours: int = 24,
     max_jump: int = 50_000_000,
+    scroll_price: int = 60_000,
 ) -> dict:
     """Oldest hour first. delta is None for an hour with no fresh readings (game or bag closed)."""
     newest = _hour_bucket(now)
     starts = [newest - HOUR_S * offset for offset in range(hours - 1, -1, -1)]
-    rows = _rows(starts, _collect(snapshots, starts, _hour_bucket), max_jump)
+    rows = _rows(starts, _collect(snapshots, starts, _hour_bucket, scroll_price), max_jump)
     deltas = [row["delta"] for row in rows]
     return {
         "hours": rows,
@@ -120,10 +136,11 @@ def daily_income(
     now: float,
     days: int = 14,
     max_jump: int = 50_000_000,
+    scroll_price: int = 60_000,
 ) -> dict:
     """Oldest day first, local midnight to local midnight; the last day is still in progress."""
     starts = day_starts(now, days)
-    rows = _rows(starts, _collect(snapshots, starts, _day_bucket), max_jump)
+    rows = _rows(starts, _collect(snapshots, starts, _day_bucket, scroll_price), max_jump)
     deltas = [row["delta"] for row in rows]
     return {
         "days": rows,

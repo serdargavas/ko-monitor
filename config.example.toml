@@ -26,6 +26,9 @@ income_max_jump = 50000000     # iki ölçüm arası bu farktan büyük sıçram
 frozen_diff_max = 0.5          # mean abs diff (0-255) of 64x36 gray frames counted as "no change"
 snapshot_retention_s = 2592000 # 30 days
 
+[items]
+scroll_price = 60000           # bir scroll kaç coin ediyor; çantadaki scrollar bu fiyatla gelire sayılır
+
 [push]
 contact = "mailto:you@example.com"  # VAPID contact; use your own address
 max_age_s = 300.0

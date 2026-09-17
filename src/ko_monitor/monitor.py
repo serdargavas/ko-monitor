@@ -51,6 +51,7 @@ class Monitor:
         self.arrow_last: int | None = None
         self.arrow_unlimited = False
         self.mana_last: int | None = None
+        self.scrolls_last: int | None = None
         self.genie_active: bool | None = None
         self.inventory_seen_at: float | None = None
         self._last_inventory_alert: float | None = None
@@ -251,6 +252,8 @@ class Monitor:
             self.arrow_last = r.arrow_count
         if r.mana_count is not None:
             self.mana_last = r.mana_count
+        if r.scroll_count is not None:
+            self.scrolls_last = r.scroll_count
 
         if r.inventory_open:
             self.inventory_seen_at = ts
@@ -352,4 +355,5 @@ class Monitor:
             slots_used_last=self.slots_used_last,
             slots_total_last=self.slots_total_last,
             inventory_seen_at=self.inventory_seen_at,
+            scrolls_last=self.scrolls_last,
         )

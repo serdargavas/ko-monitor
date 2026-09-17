@@ -137,3 +137,40 @@ def test_daily_income_ignores_stale_money_readings():
     out = daily_income([fresh, stale], now=local(2026, 9, 15, 20, 0), days=1)
     assert out["days"][0]["samples"] == 1
     assert out["days"][0]["delta"] is None
+
+
+def scroll_snap(ts: float, money: int, scrolls: int | None) -> Snapshot:
+    return Snapshot(ts, State.ALIVE, 100, 100, "Ronark Land", money, 10, 28, ts, scrolls)
+
+
+def test_scrolls_in_the_bag_count_as_income():
+    # Ten scrolls dropped and nothing was sold: that is 600k earned, not an idle hour.
+    snaps = [scroll_snap(HOUR * 9 + 10, 1000, 0), scroll_snap(HOUR * 9 + 20, 1000, 10)]
+    out = hourly_income(snaps, now=HOUR * 9 + 30, hours=1, scroll_price=60_000)
+    assert out["hours"][0]["delta"] == 600_000
+
+
+def test_selling_scrolls_is_not_counted_twice():
+    # The coins arrive as the scrolls leave: wealth is unchanged, so the hour reports the drops only.
+    snaps = [
+        scroll_snap(HOUR * 9 + 10, 0, 10),          # 600k of scrolls
+        scroll_snap(HOUR * 9 + 20, 600_000, 0),     # sold them
+    ]
+    out = hourly_income(snaps, now=HOUR * 9 + 30, hours=1, scroll_price=60_000)
+    assert out["hours"][0]["delta"] == 0
+
+
+def test_rows_without_scroll_counts_are_not_compared_with_rows_that_have_them():
+    # The first reading predates scroll counting; pairing them would invent a bagful of income.
+    snaps = [scroll_snap(HOUR * 9 + 10, 1000, None), scroll_snap(HOUR * 9 + 20, 1000, 800)]
+    out = hourly_income(snaps, now=HOUR * 9 + 30, hours=1, scroll_price=60_000)
+    assert out["hours"][0]["delta"] == 0
+
+
+def test_daily_income_counts_scrolls_too():
+    snaps = [
+        scroll_snap(local(2026, 9, 15, 12, 0), 0, 0),
+        scroll_snap(local(2026, 9, 15, 13, 0), 0, 100),
+    ]
+    out = daily_income(snaps, now=local(2026, 9, 15, 14, 0), days=1, scroll_price=60_000)
+    assert out["days"][0]["delta"] == 6_000_000

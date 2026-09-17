@@ -120,6 +120,7 @@ def serve(
             storage, board, source, notifier, vapid_public_key,
             stream_quality=cfg.api.stream_quality, web_dir=web_dir,
             income_max_jump=cfg.thresholds.income_max_jump,
+            scroll_price=cfg.items.scroll_price,
         )
         server = server_factory(app, cfg.api.port)
         log.info("API on http://%s:%d (publish with: tailscale serve --bg %d)", API_HOST, cfg.api.port, cfg.api.port)

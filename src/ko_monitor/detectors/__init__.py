@@ -117,6 +117,7 @@ class Detector:
             arrow_count=items.arrows,
             arrow_unlimited=items.arrow_unlimited,
             mana_count=items.mana,
+            scroll_count=items.scrolls,
             genie_active=read_genie(frame, self._calib.genie),
             frame_diff=self._diff.update(frame),
         )

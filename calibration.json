@@ -139,6 +139,11 @@
       16
     ],
     "template_height": 27,
-    "arrow_unlimited_file": "templates/item_arrow_unlimited.png"
+    "arrow_unlimited_file": "templates/item_arrow_unlimited.png",
+    "scroll_files": [
+      "templates/item_scroll_mavi.png",
+      "templates/item_scroll_altin.png",
+      "templates/item_scroll_yesil.png"
+    ]
   }
 }

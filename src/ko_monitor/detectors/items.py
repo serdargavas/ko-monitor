@@ -26,6 +26,7 @@ class ItemReading(NamedTuple):
     arrows: int | None
     mana: int | None
     arrow_unlimited: bool = False
+    scrolls: int | None = None
 
 
 def _slot_positions(frame: np.ndarray, inv: InventorySpec) -> list[tuple[int, int]] | None:
@@ -68,6 +69,39 @@ def _present(
         if score >= spec.match_threshold:
             return True
     return False
+
+
+def _count_any(
+    frame: np.ndarray,
+    cells: list[tuple[int, int]],
+    templates: list[np.ndarray],
+    spec: ItemsSpec,
+    ocr,
+) -> int | None:
+    """Like _count_of but for an item with several looks: scrolls share one shape in many colours,
+    and a single template scores only 0.64 against the gold one. A slot is counted once however
+    many of the templates match it.
+    """
+    if not templates:
+        return None
+    total, matched = 0, False
+    for x, y in cells:
+        best = 0.0
+        for template in templates:
+            t_h, t_w = template.shape[:2]
+            patch = frame[y : y + t_h, x : x + t_w]
+            if patch.shape[:2] != (t_h, t_w):
+                continue
+            score = float(np.nan_to_num(cv2.matchTemplate(patch, template, cv2.TM_CCOEFF_NORMED)).max())
+            best = max(best, score)
+        if best < spec.match_threshold:
+            continue
+        matched = True
+        count = _stack_count(frame, (x, y), spec, ocr)
+        if count is None:
+            return None
+        total += count
+    return total if matched else 0
 
 
 def _count_of(
@@ -120,11 +154,13 @@ def read_items(
     if cells is None:
         return ItemReading(None, None)
     mana = _count_of(frame, cells, mana_t, spec, ocr)
+    scroll_ts = [t for t in (load_template(str(f)) for f in spec.scroll_files) if t is not None]
+    scrolls = _count_any(frame, cells, scroll_ts, spec, ocr)
 
     # The never-emptying quiver shows as a stack of 1, so counting it would alert forever. When it
     # is in the bag the arrow count is meaningless and no arrow alert should ever fire.
     unlimited_t = load_template(str(spec.arrow_unlimited_file)) if spec.arrow_unlimited_file else None
     if unlimited_t is not None and unlimited_t.shape[0] == spec.template_height:
         if _present(frame, cells, unlimited_t, spec):
-            return ItemReading(None, mana, True)
-    return ItemReading(_count_of(frame, cells, arrow_t, spec, ocr), mana)
+            return ItemReading(None, mana, True, scrolls)
+    return ItemReading(_count_of(frame, cells, arrow_t, spec, ocr), mana, False, scrolls)

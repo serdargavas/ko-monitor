@@ -19,9 +19,9 @@ def ocr():
 
 
 def test_reads_arrow_and_mana_counts(ocr):
-    arrow, mana, _ = read_items(ON, True, CALIB.inventory, CALIB.items, ocr)
-    assert arrow == 6380
-    assert mana == 4150
+    reading = read_items(ON, True, CALIB.inventory, CALIB.items, ocr)
+    assert reading.arrows == 6380
+    assert reading.mana == 4150
 
 
 def test_closed_inventory_reads_nothing(ocr):
@@ -35,7 +35,8 @@ def test_missing_spec_reads_nothing(ocr):
 def test_item_absent_from_every_slot_counts_as_zero(ocr):
     # No icon matches anywhere -> the stack is gone -> zero, which is what "bitti" means.
     blank = np.zeros_like(ON)
-    assert read_items(blank, True, CALIB.inventory, CALIB.items, ocr) == ItemReading(0, 0)
+    reading = read_items(blank, True, CALIB.inventory, CALIB.items, ocr)
+    assert (reading.arrows, reading.mana, reading.scrolls) == (0, 0, 0)
 
 
 def test_slot_grid_off_frame_reads_nothing(ocr):
@@ -57,8 +58,7 @@ def test_two_stacks_of_the_same_item_are_summed(ocr):
     # small stack is a false "running out" with 6197 potions in the bag, the big one never alerts
     # while the active stack empties.
     frame = cv2.imread("samples/inventory_open/20260915-133918.png")
-    _, mana, _ = read_items(frame, True, CALIB.inventory, CALIB.items, ocr)
-    assert mana == 1197 + 5000
+    assert read_items(frame, True, CALIB.inventory, CALIB.items, ocr).mana == 1197 + 5000
 
 
 def test_unreadable_stack_count_reads_unknown(ocr):
@@ -93,3 +93,15 @@ def test_an_uncalibrated_unlimited_quiver_leaves_the_count_alone(ocr):
     reading = read_items(UNLIMITED, True, CALIB.inventory, spec, ocr)
     assert reading.arrow_unlimited is False
     assert reading.arrows == 0  # the old quiver really is gone from this bag
+
+
+def test_scrolls_are_summed_across_colours_wherever_they_sit(ocr):
+    # Scrolls come in several colours and the player moves them around; one template scores only
+    # 0.64 against the gold one, so each colour has its own and every matching slot is counted.
+    reading = read_items(UNLIMITED, True, CALIB.inventory, CALIB.items, ocr)
+    assert reading.scrolls == 120 + 129 + 121 + 104 + 119 + 127 + 126
+
+
+def test_without_scroll_templates_the_count_is_unknown(ocr):
+    spec = dataclasses.replace(CALIB.items, scroll_files=())
+    assert read_items(UNLIMITED, True, CALIB.inventory, spec, ocr).scrolls is None

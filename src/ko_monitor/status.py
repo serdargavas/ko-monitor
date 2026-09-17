@@ -29,6 +29,7 @@ class AgentStatus:
     arrow_last: int | None = None
     arrow_unlimited: bool = False
     mana_last: int | None = None
+    scrolls_last: int | None = None
     genie_active: bool | None = None
     inventory_seen_at: float | None = None
 
@@ -67,6 +68,7 @@ def status_from(
         arrow_last=_plain(monitor.arrow_last),
         arrow_unlimited=monitor.arrow_unlimited,
         mana_last=_plain(monitor.mana_last),
+        scrolls_last=_plain(monitor.scrolls_last),
         genie_active=_plain(monitor.genie_active),
         inventory_seen_at=monitor.inventory_seen_at,
     )

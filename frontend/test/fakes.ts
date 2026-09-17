@@ -122,6 +122,7 @@ export function agentStatus(overrides: Partial<AgentStatus> = {}): AgentStatus {
     arrow_last: null,
     arrow_unlimited: false,
     mana_last: null,
+    scrolls_last: null,
     genie_active: null,
     ...overrides,
   };

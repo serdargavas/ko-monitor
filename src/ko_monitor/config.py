@@ -29,6 +29,13 @@ class Thresholds:
 
 
 @dataclass(frozen=True)
+class ItemsConfig:
+    # What one scroll sells for. Loot waiting in the bag counts towards income at this price, so
+    # selling it does not show up as a second helping of the same coins.
+    scroll_price: int = 60_000
+
+
+@dataclass(frozen=True)
 class PushConfig:
     contact: str = "mailto:you@example.com"
     max_age_s: float = 300.0
@@ -62,6 +69,7 @@ class Config:
     log_dir: Path = Path("logs")
     calibration_path: Path = Path("calibration.json")
     thresholds: Thresholds = field(default_factory=Thresholds)
+    items: ItemsConfig = field(default_factory=ItemsConfig)
     push: PushConfig = field(default_factory=PushConfig)
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
@@ -96,6 +104,7 @@ def load_config(path: Path | None, base_dir: Path = PROJECT_ROOT) -> Config:
         log_dir=resolve(general.get("log_dir", defaults.log_dir)),
         calibration_path=resolve(general.get("calibration_path", defaults.calibration_path)),
         thresholds=Thresholds(**raw.get("thresholds", {})),
+        items=ItemsConfig(**raw.get("items", {})),
         push=PushConfig(**raw.get("push", {})),
         heartbeat=HeartbeatConfig(**raw.get("heartbeat", {})),
         api=ApiConfig(**raw.get("api", {})),

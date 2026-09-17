@@ -38,6 +38,7 @@ export interface AgentStatus {
   arrow_last: number | null;
   arrow_unlimited: boolean;
   mana_last: number | null;
+  scrolls_last: number | null;
   genie_active: boolean | null;
 }
 

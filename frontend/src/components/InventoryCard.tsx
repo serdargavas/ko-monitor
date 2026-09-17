@@ -37,6 +37,8 @@ export function InventoryCard({ status }: { status: AgentStatus }) {
         <dd>{status.arrow_unlimited ? "∞ sınırsız" : numberText(status.arrow_last)}</dd>
         <dt>Pot</dt>
         <dd>{numberText(status.mana_last)}</dd>
+        <dt>Scroll</dt>
+        <dd>{numberText(status.scrolls_last)}</dd>
         <dt>Görüldü</dt>
         <dd>{seenText}</dd>
       </dl>

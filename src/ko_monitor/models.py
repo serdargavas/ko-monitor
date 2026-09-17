@@ -55,6 +55,7 @@ class Readings:
     arrow_count: int | None = None
     arrow_unlimited: bool = False  # the never-emptying quiver is in the bag: nothing to count
     mana_count: int | None = None
+    scroll_count: int | None = None
     genie_active: bool | None = None  # None = the Genie panel could not be read
     frame_diff: float | None = None
 
@@ -78,3 +79,4 @@ class Snapshot:
     slots_used_last: int | None
     slots_total_last: int | None
     inventory_seen_at: float | None
+    scrolls_last: int | None = None

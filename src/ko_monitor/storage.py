@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS snapshots(
   state TEXT NOT NULL,
   hp INTEGER, hp_max INTEGER, zone TEXT,
   money_last INTEGER, slots_used_last INTEGER, slots_total_last INTEGER,
-  inventory_seen_at REAL
+  inventory_seen_at REAL,
+  scrolls_last INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_ts ON snapshots(ts);
 CREATE TABLE IF NOT EXISTS events(
@@ -44,6 +45,14 @@ class Storage:
         self._lock = threading.Lock()
         with self._lock:
             self._conn.executescript(SCHEMA)
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Columns added after a database was created; older rows keep NULL."""
+        have = {row["name"] for row in self._conn.execute("PRAGMA table_info(snapshots)")}
+        if "scrolls_last" not in have:
+            with self._conn:
+                self._conn.execute("ALTER TABLE snapshots ADD COLUMN scrolls_last INTEGER")
 
     def close(self) -> None:
         with self._lock:
@@ -52,9 +61,9 @@ class Storage:
     def add_snapshot(self, s: Snapshot) -> None:
         with self._lock, self._conn:
             self._conn.execute(
-                "INSERT INTO snapshots VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO snapshots VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (s.ts, s.state.value, s.hp, s.hp_max, s.zone, s.money_last,
-                 s.slots_used_last, s.slots_total_last, s.inventory_seen_at),
+                 s.slots_used_last, s.slots_total_last, s.inventory_seen_at, s.scrolls_last),
             )
 
     def snapshots_since(self, ts: float) -> list[Snapshot]:
@@ -65,7 +74,7 @@ class Storage:
         return [
             Snapshot(r["ts"], State(r["state"]), r["hp"], r["hp_max"], r["zone"],
                      r["money_last"], r["slots_used_last"], r["slots_total_last"],
-                     r["inventory_seen_at"])
+                     r["inventory_seen_at"], r["scrolls_last"])
             for r in rows
         ]
 

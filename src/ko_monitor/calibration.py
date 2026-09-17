@@ -58,6 +58,9 @@ class ItemsSpec:
     # The server sells a quiver that never empties; it shows as a stack of 1 and must not be
     # counted or alerted on. None = this account has never had one.
     arrow_unlimited_file: Path | None
+    # Scrolls come in several colours with the same shape; one template per colour, because a
+    # single template scores only 0.64 against the gold one.
+    scroll_files: tuple[Path, ...]
     match_threshold: float
     count_box: Roi  # stack count, relative to the slot's top-left corner
     template_height: int
@@ -134,6 +137,7 @@ def load_calibration(path: Path) -> Calibration:
             arrow_unlimited_file=(
                 base / itm["arrow_unlimited_file"] if itm.get("arrow_unlimited_file") else None
             ),
+            scroll_files=tuple(base / f for f in itm.get("scroll_files", [])),
             match_threshold=float(itm.get("match_threshold", 0.85)),
             count_box=tuple(itm["count_box"]),
             template_height=int(itm.get("template_height", 27)),

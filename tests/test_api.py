@@ -101,6 +101,7 @@ def test_snapshots_default_to_the_last_24_hours(env):
     assert body[0] == {
         "ts": NOW - 120, "state": "dead", "hp": 9718, "hp_max": 9996, "zone": "Ronark Land",
         "money_last": 1_000_000, "slots_used_last": 20, "slots_total_last": 28, "inventory_seen_at": NOW - 125,
+        "scrolls_last": None,
     }
 
 

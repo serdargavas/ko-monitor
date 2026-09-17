@@ -100,6 +100,7 @@ def create_app(
     now: Callable[[], float] = time.time,
     extra_hosts: Sequence[str] = (),
     income_max_jump: int = 50_000_000,
+    scroll_price: int = 60_000,
 ) -> FastAPI:
     """source and stream_quality feed the live stream route added in stream.py (Task 3)."""
     app = FastAPI(title="KO Monitor", docs_url=None, redoc_url=None, openapi_url=None)
@@ -138,7 +139,9 @@ def create_app(
     def get_income(hours: int = Query(24, ge=1, le=720)):
         current = now()
         start = (current // HOUR_S) * HOUR_S - HOUR_S * (hours - 1)
-        return hourly_income(storage.snapshots_since(start), current, hours, income_max_jump)
+        return hourly_income(
+            storage.snapshots_since(start), current, hours, income_max_jump, scroll_price
+        )
 
     @app.get("/api/income/daily")
     def get_daily_income(days: int = Query(14, ge=1, le=30)):
@@ -146,7 +149,11 @@ def create_app(
         # Days run local midnight to local midnight, so the fetch window starts at the oldest
         # midnight rather than a multiple of 86400 seconds.
         return daily_income(
-            storage.snapshots_since(day_starts(current, days)[0]), current, days, income_max_jump
+            storage.snapshots_since(day_starts(current, days)[0]),
+            current,
+            days,
+            income_max_jump,
+            scroll_price,
         )
 
     @app.get("/api/push/vapid-key")
